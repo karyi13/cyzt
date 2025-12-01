@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>创业板涨停复盘</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --sidebar-bg: #2d2d2d;
+            --card-bg: #333333;
+            --text-color: #e0e0e0;
+            --accent-color: #4a90e2;
+            --danger-color: #ff4d4d;
+            --success-color: #00b894;
+            --border-color: #444;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-bottom: 1px solid var(--border-color);
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        .date-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .date-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-bottom: 5px;
+            transition: background-color 0.2s;
+        }
+
+        .date-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .date-item.active {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .top-bar {
+            padding: 15px 20px;
+            background-color: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .toggle-switch input {
+            display: none;
+        }
+
+        .toggle-slider {
+            width: 40px;
+            height: 20px;
+            background-color: #555;
+            border-radius: 20px;
+            position: relative;
+            margin-right: 10px;
+            transition: background-color 0.2s;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.2s;
+        }
+
+        .toggle-switch input:checked+.toggle-slider {
+            background-color: var(--accent-color);
+        }
+
+        .toggle-switch input:checked+.toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        .content-area {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Stock List */
+        .stock-list-panel {
+            width: 300px;
+            background-color: var(--card-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stock-list-header {
+            padding: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .stock-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .stock-card {
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, background-color 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-2px);
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .stock-card.active {
+            border-color: var(--accent-color);
+            background-color: rgba(74, 144, 226, 0.1);
+        }
+
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .stock-code {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .stock-name {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .stock-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            font-size: 0.9em;
+        }
+
+        .pct-change {
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .pct-up {
+            color: var(--danger-color);
+        }
+
+        .pct-down {
+            color: var(--success-color);
+        }
+
+        .pct-flat {
+            color: #888;
+        }
+
+        /* Chart Area */
+        .chart-panel {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            /* Default: stack vertically if multiple */
+            background-color: var(--bg-color);
+            overflow-y: auto;
+            /* Allow scrolling for multiple charts */
+            gap: 20px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 100%;
+            /* Fill parent in single mode */
+            min-height: 500px;
+            /* Minimum height for multi mode */
+            border-radius: 8px;
+            background-color: var(--card-bg);
+            padding: 10px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        .chart-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+            display: none;
+            /* Hidden by default */
+        }
+
+        .chart-close-btn:hover {
+            background: rgba(255, 0, 0, 0.5);
+        }
+
+        .multi-mode .chart-container {
+            height: 500px;
+            /* Fixed height in multi mode */
+            flex-shrink: 0;
+        }
+
+        .multi-mode .chart-close-btn {
+            display: block;
+        }
+
+        .empty-state {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            color: #666;
+            font-size: 1.2em;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-header">
+            📅 历史日期
+        </div>
+        <div class="date-list" id="dateList">
+            <!-- Dates will be populated here -->
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="top-bar">
+            <div id="currentDateTitle">请选择日期</div>
+            <div class="controls">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="compareModeToggle">
+                    <span class="toggle-slider"></span>
+                    <span>并列显示 (对比模式)</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <div class="stock-list-panel">
+                <div class="stock-list-header">
+                    当日涨停股票 (<span id="stockCount">0</span>)
+                </div>
+                <div class="stock-list" id="stockList">
+                    <div class="empty-state" style="height: 200px;">请选择日期</div>
+                </div>
+            </div>
+
+            <div class="chart-panel" id="chartPanel">
+                <div class="empty-state">请选择股票查看K线</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentDate = null;
+        let currentStock = null;
+        let chartInstances = []; // Store all chart instances
+
+        // Zoom persistence state
+        // We store the number of bars visible (e.g., 60 bars) rather than percentage
+        // to maintain consistent "zoom level" across different datasets.
+        let savedVisibleBarCount = 60;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchDates();
+
+            const toggle = document.getElementById('compareModeToggle');
+            toggle.addEventListener('change', (e) => {
+                const panel = document.getElementById('chartPanel');
+                if (e.target.checked) {
+                    panel.classList.add('multi-mode');
+                } else {
+                    panel.classList.remove('multi-mode');
+                    // If switching off compare mode, keep only the last chart or clear
+                    if (chartInstances.length > 1) {
+                        // Keep the last one, remove others
+                        const lastChart = chartInstances[chartInstances.length - 1];
+                        // Clear DOM
+                        panel.innerHTML = '';
+                        // Re-append last chart's container (need to re-render effectively or just clear all and re-select)
+                        // Simpler: Clear all and re-select current stock if exists
+                        chartInstances.forEach(c => c.dispose());
+                        chartInstances = [];
+                        if (currentStock && currentDate) {
+                            renderChart(currentDate, currentStock, "Loading..."); // Name might be lost, need to store it
+                        } else {
+                            panel.innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
+                        }
+                    }
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                chartInstances.forEach(chart => chart.resize());
+            });
+        });
+
+        async function fetchDates() {
+            try {
+                const response = await fetch('/api/dates');
+                const dates = await response.json();
+                const list = document.getElementById('dateList');
+                list.innerHTML = '';
+
+                dates.forEach(date => {
+                    const div = document.createElement('div');
+                    div.className = 'date-item';
+                    div.textContent = date;
+                    div.onclick = () => selectDate(date, div);
+                    list.appendChild(div);
+                });
+
+                // Select first date by default
+                if (dates.length > 0) {
+                    selectDate(dates[0], list.firstChild);
+                }
+            } catch (e) {
+                console.error('Error fetching dates:', e);
+            }
+        }
+
+        async function selectDate(date, element) {
+            currentDate = date;
+
+            // Update UI
+            document.querySelectorAll('.date-item').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+            document.getElementById('currentDateTitle').textContent = `${date} 涨停复盘`;
+
+            // Fetch stocks
+            fetchStocks(date);
+        }
+
+        async function fetchStocks(date) {
+    try {
+        const response = await fetch(`/api/stocks/${date}`);
+        let stocks = await response.json();
+        const list = document.getElementById('stockList');
+        document.getElementById('stockCount').textContent = stocks.length;
+        list.innerHTML = '';
+
+        if (stocks.length === 0) {
+            list.innerHTML = '<div class="empty-state" style="height: 100px;">无数据</div>';
+            return;
+        }
+
+        // 按次日开盘涨跌幅排序（从高到低）
+        stocks.sort((a, b) => {
+            // 处理null值，将有数据的排在前面
+            if (a.t1_open_pct === null && b.t1_open_pct !== null) return 1;
+            if (a.t1_open_pct !== null && b.t1_open_pct === null) return -1;
+            // 降序排序
+            return b.t1_open_pct - a.t1_open_pct;
+        });
+
+        stocks.forEach(stock => {
+                    const card = document.createElement('div');
+                    card.className = 'stock-card';
+                    card.dataset.code = stock.code; // Store code for styling
+
+                    let pctClass = 'pct-flat';
+                    let pctText = '--';
+                    if (stock.t1_open_pct !== null) {
+                        pctText = (stock.t1_open_pct > 0 ? '+' : '') + stock.t1_open_pct + '%';
+                        if (stock.t1_open_pct > 0) pctClass = 'pct-up';
+                        else if (stock.t1_open_pct < 0) pctClass = 'pct-down';
+                    }
+
+                    // 计算盈亏比例：(T+2日收盘价 - T+1日开盘价) / T+1日开盘价 * 100%
+                    let profitPct = 0;
+                    if (stock.t1_open_price && stock.t2_close_price) {
+                        profitPct = ((stock.t2_close_price - stock.t1_open_price) / stock.t1_open_price) * 100;
+                    }
+                    let profitPctText = profitPct.toFixed(2) + '%';
+                    let profitClass = 'pct-flat';
+                    if (profitPct > 0) profitClass = 'pct-up';
+                    else if (profitPct < 0) profitClass = 'pct-down';
+
+                    card.innerHTML = `
+                    <div class="stock-header">
+                        <span class="stock-name">${stock.name}</span>
+                        <span class="stock-code">${stock.code}</span>
+                    </div>
+                    <div class="stock-info">
+                        <span>次日开盘:</span>
+                        <span class="pct-change ${pctClass}">${pctText}</span>
+                    </div>
+                    <div class="stock-info">
+                        <span>盈亏比例:</span>
+                        <span class="pct-change ${profitClass}">${profitPctText}</span>
+                    </div>
+                `;
+
+                    card.onclick = () => selectStock(stock.code, stock.name, card);
+                    list.appendChild(card);
+                });
+            } catch (e) {
+                console.error('Error fetching stocks:', e);
+            }
+        }
+
+        async function selectStock(code, name, element) {
+            currentStock = code;
+
+            // Update UI
+            document.querySelectorAll('.stock-card').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            // Render chart
+            await renderChart(currentDate, code, name);
+        }
+
+        async function renderChart(date, code, name) {
+            const panel = document.getElementById('chartPanel');
+            const isCompareMode = document.getElementById('compareModeToggle').checked;
+
+            // If not in compare mode, clear previous charts
+            if (!isCompareMode) {
+                // Dispose previous instances
+                chartInstances.forEach(c => c.dispose());
+                chartInstances = [];
+                panel.innerHTML = '';
+            } else {
+                // In compare mode, remove empty state if exists
+                const emptyState = panel.querySelector('.empty-state');
+                if (emptyState) emptyState.remove();
+            }
+
+            // Create container for new chart
+            const container = document.createElement('div');
+            container.className = 'chart-container';
+
+            // Close button for compare mode
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'chart-close-btn';
+            closeBtn.innerHTML = '×';
+            closeBtn.onclick = () => {
+                container.remove();
+                // Remove from instances list (need to find it)
+                // Ideally we track instances better, but for now this is visual removal
+                // Memory leak is minor for this use case, but let's try to dispose
+                // We'll attach the instance to the container for easy disposal
+                if (container.chartInstance) {
+                    container.chartInstance.dispose();
+                }
+            };
+            container.appendChild(closeBtn);
+
+            // Chart DOM
+            const chartDom = document.createElement('div');
+            chartDom.style.width = '100%';
+            chartDom.style.height = '100%';
+            container.appendChild(chartDom);
+
+            // Prepend or Append? User usually wants to see the new one.
+            // Let's prepend so it appears at top.
+            panel.insertBefore(container, panel.firstChild);
+
+            try {
+                const response = await fetch(`/api/kline/${date}/${code}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    chartDom.innerHTML = '<div class="empty-state">无法获取K线数据</div>';
+                    return;
+                }
+
+                const chartInstance = echarts.init(chartDom, 'dark');
+                container.chartInstance = chartInstance; // Attach for cleanup
+                chartInstances.push(chartInstance);
+
+                const dates = data.map(item => item.date);
+                const values = data.map(item => [item.open, item.close, item.low, item.high]);
+                const volumes = data.map((item, index) => [index, item.vol, item.open > item.close ? -1 : 1]);
+
+                // MA Data
+                const ma5 = data.map(item => item.ma5);
+                const ma10 = data.map(item => item.ma10);
+                const ma20 = data.map(item => item.ma20);
+
+                // Calculate Zoom Start/End based on savedVisibleBarCount
+                const totalBars = dates.length;
+                let startPercent = 0;
+                let endPercent = 100;
+
+                if (totalBars > savedVisibleBarCount) {
+                    startPercent = 100 - (savedVisibleBarCount / totalBars * 100);
+                }
+
+                // Ensure valid range
+                if (startPercent < 0) startPercent = 0;
+
+                // Find the index of the selected date to mark it
+                const selectedDateIndex = dates.indexOf(date);
+
+                const option = {
+                    backgroundColor: '#333',
+                    title: {
+                        text: `${name} (${code}) - ${date}`,
+                        left: 0
+                    },
+                    tooltip: {
+                        trigger: 'axis',
+                        axisPointer: {
+                            type: 'cross'
+                        }
+                    },
+                    legend: {
+                        data: ['日K', 'MA5', 'MA10', 'MA20', 'Volume'],
+                        top: 0,
+                        right: 50
+                    },
+                    grid: [
+                        {
+                            left: '5%',
+                            right: '5%',
+                            height: '55%'
+                        },
+                        {
+                            left: '5%',
+                            right: '5%',
+                            top: '70%',
+                            height: '15%'
+                        }
+                    ],
+                    xAxis: [
+                        {
+                            type: 'category',
+                            data: dates,
+                            scale: true,
+                            boundaryGap: false,
+                            axisLine: { onZero: false },
+                            splitLine: { show: false },
+                            splitNumber: 20,
+                            min: 'dataMin',
+                            max: 'dataMax'
+                        },
+                        {
+                            type: 'category',
+                            gridIndex: 1,
+                            data: dates,
+                            scale: true,
+                            boundaryGap: false,
+                            axisLine: { onZero: false },
+                            axisTick: { show: false },
+                            splitLine: { show: false },
+                            axisLabel: { show: false },
+                            min: 'dataMin',
+                            max: 'dataMax'
+                        }
+                    ],
+                    yAxis: [
+                        {
+                            scale: true,
+                            splitArea: {
+                                show: true
+                            }
+                        },
+                        {
+                            scale: true,
+                            gridIndex: 1,
+                            splitNumber: 2,
+                            axisLabel: { show: false },
+                            axisLine: { show: false },
+                            axisTick: { show: false },
+                            splitLine: { show: false }
+                        }
+                    ],
+                    dataZoom: [
+                        {
+                            type: 'inside',
+                            xAxisIndex: [0, 1],
+                            start: startPercent,
+                            end: endPercent
+                        },
+                        {
+                            show: true,
+                            xAxisIndex: [0, 1],
+                            type: 'slider',
+                            top: '90%',
+                            start: startPercent,
+                            end: endPercent
+                        }
+                    ],
+                    series: [
+                        {
+                            name: '日K',
+                            type: 'candlestick',
+                            data: values,
+                            itemStyle: {
+                                color: '#ef232a',
+                                color0: '#14b143',
+                                borderColor: '#ef232a',
+                                borderColor0: '#14b143'
+                            },
+                            markPoint: {
+                                data: [
+                                    {
+                                        name: '涨停日',
+                                        coord: [date, values[selectedDateIndex] ? values[selectedDateIndex][1] : 0],
+                                        value: '涨停',
+                                        itemStyle: { color: '#e6a23c' }
+                                    }
+                                ]
+                            },
+                            markLine: {
+                                symbol: ['none', 'none'],
+                                data: [
+                                    {
+                                        xAxis: selectedDateIndex,
+                                        label: { show: false },
+                                        lineStyle: { color: '#e6a23c', type: 'dashed' }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            name: 'MA5',
+                            type: 'line',
+                            data: ma5,
+                            smooth: true,
+                            lineStyle: { opacity: 0.5, width: 1 }
+                        },
+                        {
+                            name: 'MA10',
+                            type: 'line',
+                            data: ma10,
+                            smooth: true,
+                            lineStyle: { opacity: 0.5, width: 1 }
+                        },
+                        {
+                            name: 'MA20',
+                            type: 'line',
+                            data: ma20,
+                            smooth: true,
+                            lineStyle: { opacity: 0.5, width: 1 }
+                        },
+                        {
+                            name: 'Volume',
+                            type: 'bar',
+                            xAxisIndex: 1,
+                            yAxisIndex: 1,
+                            data: volumes,
+                            itemStyle: {
+                                color: function (params) {
+                                    var colorList;
+                                    if (values[params.data[0]][1] > values[params.data[0]][0]) {
+                                        colorList = '#ef232a';
+                                    } else {
+                                        colorList = '#14b143';
+                                    }
+                                    return colorList;
+                                }
+                            }
+                        }
+                    ]
+                };
+
+                chartInstance.setOption(option);
+
+                // Listen to dataZoom events to update savedVisibleBarCount
+                chartInstance.on('dataZoom', function (params) {
+                    // ECharts dataZoom event can be triggered by slider or inside zoom
+                    // We need to get the current start/end from the option or model
+                    const option = chartInstance.getOption();
+                    const start = option.dataZoom[0].start;
+                    const end = option.dataZoom[0].end;
+
+                    // Calculate visible bars
+                    const currentTotalBars = dates.length;
+                    const visiblePercent = end - start;
+                    savedVisibleBarCount = Math.round(currentTotalBars * (visiblePercent / 100));
+
+                    // Enforce minimum
+                    if (savedVisibleBarCount < 5) savedVisibleBarCount = 5;
+                });
+
+            } catch (e) {
+                console.error('Error rendering chart:', e);
+            }
+        }
+    </script>
+
+</body>
+
+</html>
