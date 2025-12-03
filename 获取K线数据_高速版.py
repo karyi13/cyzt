@@ -23,6 +23,7 @@ import warnings
 import socket
 import logging
 from collections import deque
+import sys
 warnings.filterwarnings("ignore")
 
 # 设置日志配置
@@ -57,8 +58,8 @@ def new_session_init(self, *args, **kwargs):
 requests.Session.__init__ = new_session_init
 
 # ---------- 基础配置 ----------
-start_date = '2025-11-10'
-end_date   = '2025-11-27'
+start_date = '2025-11-20'
+end_date   = datetime.datetime.now().strftime('%Y-%m-%d')
 
 base_data_dir  = './data'
 data_dir       = base_data_dir
@@ -435,18 +436,72 @@ def retry_with_backoff(func, max_retries=RETRY_COUNT, base_delay=RETRY_DELAY, ma
     print(f"达到最大重试次数 ({max_retries})，放弃重试")
     return pd.DataFrame() if 'fetch_kline' in func.__name__ else None
 
-def fetch_kline_data(stock_code, date, period='daily', adjust=""):
-    """完全替换原 ak 版本，添加重试机制"""
+def fetch_kline_data(stock_code, date, period='daily', adjust=""): 
+    """ 
+    Fetches historical K-line data for a given stock code and date range based on trade dates. 
+
+    Args: 
+        stock_code (str): The stock code. 
+        date (str or datetime): The reference date (must be a trade date). 
+        period (str): The period of the K-line data (e.g., 'daily', 'weekly', 'monthly'). 
+        adjust (str): The adjustment type (e.g., '', 'hfq', 'qfq'). 
+
+    Returns: 
+        pandas.DataFrame: The K-line data. 
+    """ 
+    if isinstance(date, str): 
+        date = datetime.datetime.strptime(date, '%Y-%m-%d').date() 
+    elif isinstance(date, datetime.datetime): 
+        date = date.date() 
+
+    # Ensure trade_dates_df is available and sorted 
+    global trade_dates_df 
+    if 'trade_dates_df' not in globals() or trade_dates_df.empty: 
+        trade_dates_df = ak.tool_trade_date_hist_sina() 
+        trade_dates_df['trade_date'] = pd.to_datetime(trade_dates_df['trade_date']) # Convert to Timestamp 
+        trade_dates_df.sort_values(by='trade_date', inplace=True) 
+
+    # Calculate the start date (one year before the given date) 
+    start_date_obj = date - datetime.timedelta(days=365) # Approximate one year 
+
+    # Calculate the end date (one month after the given date) 
+    # This is a bit tricky with varying month lengths, a simple approach is to add 30 days 
+    end_date_obj = date + datetime.timedelta(days=30) # Approximate one month 
+
+    # Convert date objects to Timestamp objects for searchsorted 
+    start_date_ts = pd.Timestamp(start_date_obj) 
+    end_date_ts = pd.Timestamp(end_date_obj) 
+
+    # Find the closest trade dates to the calculated start and end dates 
+    start_date_kline = trade_dates_df.iloc[trade_dates_df['trade_date'].searchsorted(start_date_ts, side='left')]['trade_date'].strftime('%Y%m%d') 
+    end_date_kline = trade_dates_df.iloc[trade_dates_df['trade_date'].searchsorted(end_date_ts, side='right') -1]['trade_date'].strftime('%Y%m%d')
+
+    try: 
+        stock_df = ak.stock_zh_a_hist(symbol=stock_code, period=period, start_date=start_date_kline, end_date=end_date_kline, adjust=adjust) 
+        return stock_df 
+    except Exception as e: 
+        print(f"Error fetching data for {stock_code} on {date}: {e}") 
+        return pd.DataFrame()
+
+def fetch_kline_data_pytdx_bao(stock_code, date, period='daily', adjust=""):
+    """使用pytdx和baostock获取K线数据，带重试机制，保留从一年前到目标日期后5根的完整K线数据"""
     if isinstance(date, str):
         date = pd.to_datetime(date).date()
     elif isinstance(date, datetime.datetime):
         date = date.date()
 
-    start = date - datetime.timedelta(days=365)
-    end   = date + datetime.timedelta(days=30)
+    # 从目标日期前一年开始获取数据（更精确的年份计算）
+    try:
+        # 尝试使用更精确的年份计算（考虑闰年）
+        start = date.replace(year=date.year - 1)
+    except ValueError:
+        # 如果是2月29日且上一年不是闰年，回退到365天计算
+        start = date - datetime.timedelta(days=365)
+    
+    end = date + datetime.timedelta(days=30)
     code_pure = str(stock_code).split('.')[0][-6:]
     
-    print(f"开始获取股票 {code_pure} 的K线数据")
+    print(f"开始获取股票 {code_pure} 的K线数据 (pytdx/baostock)")
     
     # 首先尝试pytdx，带重试机制
     df = retry_with_backoff(fetch_kline_pytdx, RETRY_COUNT, RETRY_DELAY, MAX_DELAY, code_pure, start, end)
@@ -458,6 +513,29 @@ def fetch_kline_data(stock_code, date, period='daily', adjust=""):
     
     if not df.empty:
         df = df[['日期', '开盘', '最高', '最低', '收盘', '成交量', '成交额', '股票代码']]
+        
+        # 确保日期列为datetime类型
+        try:
+            if not pd.api.types.is_datetime64_any_dtype(df['日期']):
+                df['日期'] = pd.to_datetime(df['日期'])
+            
+            date_str = date.strftime('%Y-%m-%d')
+            
+            # 找出目标日期在DataFrame中的索引位置
+            date_idx = df[df['日期'] >= pd.to_datetime(date_str)].index.min()
+            
+            # 如果找到了目标日期，只保留从一年前到目标日期后5根的数据
+            if pd.notna(date_idx):
+                # 确保索引有效
+                date_idx = int(date_idx)
+                # 计算目标日期后5根的索引位置（考虑DataFrame长度）
+                end_idx = min(date_idx + 5, len(df))
+                # 应用索引限制，只保留从一年前到目标日期后5根的完整K线数据
+                df = df.iloc[:end_idx]
+                print(f"保留股票 {code_pure} 从一年前到目标日期{date_str}后5根的完整K线数据")
+        except Exception as e:
+            print(f"处理K线数据时出错: {str(e)}")
+        
         print(f"成功获取股票 {code_pure} 的K线数据，共{len(df)}条记录")
     else:
         print(f"警告: 无法获取股票 {code_pure} 的K线数据")
@@ -503,19 +581,18 @@ def process_stock_batch(batch_stocks, kline_cache_dir):
         stock_code, date_str = str(row['股票代码']), row['日期']
         file_name = f'{date_str}_{stock_code}.SZ.csv'
         file_path = os.path.join(kline_cache_dir, file_name)
-        
-        # 检查缓存是否存在
+            
+        # 检查缓存是否存在，即使缓存存在也重新获取数据
         if os.path.exists(file_path):
-            print(f"缓存命中: {stock_code} {date_str}")
-            batch_success += 1
-            continue
-
+            print(f"缓存命中: {stock_code} {date_str}, 但重新获取数据")
+            # 移除continue语句，确保重新获取数据
+        
         try:
             # 记录开始时间
             start_time = time.time()
             
             # 获取K线数据
-            kline_df = fetch_kline_data(stock_code, date_str)
+            kline_df = fetch_kline_data_pytdx_bao(stock_code, date_str)
             
             # 处理结果
             if not kline_df.empty:
@@ -607,81 +684,19 @@ else:
     print("请检查日期范围和数据目录是否正确。")
 
 print("\n--- 所有任务已完成 ---")
-
-# 添加简单的性能测试函数
-def run_simple_performance_test():
-    """
-    运行简单的性能测试，验证优化后的代码效果
-    """
-    logger.info("开始执行优化后的性能测试...")
-    
-    # 测试参数
-    test_stocks = ['300179', '300750', '300059', '300347', '300251']
-    start_date = (datetime.datetime.now() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
-    end_date = datetime.datetime.now().strftime('%Y-%m-%d')
-    
-    # 1. 测试之前出错的股票
-    logger.info("\n1. 测试之前超时的股票(300179):")
-    start_time = time.time()
-    try:
-        df = fetch_kline_data('300179', start_date, end_date)
-        elapsed = time.time() - start_time
-        if df is not None and not df.empty:
-            logger.info(f"  成功获取，耗时: {elapsed:.2f}秒, 记录数: {len(df)}")
-            logger.info(f"  ✓ 超时问题已修复!")
-        else:
-            logger.warning(f"  获取失败，耗时: {elapsed:.2f}秒")
-    except Exception as e:
-        elapsed = time.time() - start_time
-        logger.error(f"  异常: {str(e)}, 耗时: {elapsed:.2f}秒")
-    
-    # 2. 批量处理测试
-    logger.info("\n2. 批量处理测试:")
-    success_count = 0
-    total_time = 0
-    
-    for stock_code in test_stocks:
-        start_time = time.time()
-        try:
-            df = fetch_kline_data(stock_code, start_date, end_date)
-            elapsed = time.time() - start_time
-            total_time += elapsed
-            
-            if df is not None and not df.empty:
-                success_count += 1
-                logger.info(f"  {stock_code}: 成功 ({len(df)}条), {elapsed:.2f}秒")
-            else:
-                logger.warning(f"  {stock_code}: 失败, {elapsed:.2f}秒")
-        except Exception as e:
-            elapsed = time.time() - start_time
-            logger.error(f"  {stock_code}: 异常 - {str(e)}, {elapsed:.2f}秒")
-    
-    # 3. 显示连接池状态
-    logger.info("\n3. 连接池状态:")
-    logger.info(f"  连接池已正确实现，支持连接复用和自动健康检查")
-    logger.info(f"  最大连接数: {connection_pool.max_connections}")
-    logger.info(f"  当前空闲连接数: {len(connection_pool.connections)}")
-    logger.info(f"  当前使用中连接数: {len(connection_pool.in_use)}")
-    
-    # 4. 输出总结
-    logger.info("\n===== 测试总结 =====")
-    success_rate = success_count / len(test_stocks) * 100
-    avg_time = total_time / len(test_stocks) if success_count > 0 else 0
-    
-    logger.info(f"批量处理成功率: {success_rate:.1f}%")
-    logger.info(f"平均请求耗时: {avg_time:.2f}秒/请求")
-    
-    if success_rate >= 80:
-        logger.info("✓ 优化成功: 脚本稳定性显著提高")
-    else:
-        logger.warning("! 优化效果一般: 请检查网络连接和服务器状态")
-    
-    logger.info("===================\n")
+   
+# 测试函数已移除
 
 # 主程序
 def main():
-    # 运行性能测试
-    run_simple_performance_test()
+    """主函数"""
+    print("=== K线数据获取程序启动 ===")
+    
+    # 正常运行模式
+    if not final_filtered_df.empty:
+        process_stock_batch(final_filtered_df, kline_cache_dir)
+    else:
+        print("没有过滤后的股票数据可供处理。")
     
     # 确保连接池关闭
     try:
@@ -693,5 +708,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-import sys
-sys.exit(0)  # 确保脚本正常退出
+# 注意：移除了sys.exit(0)，让main函数正常执行完成

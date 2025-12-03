@@ -243,6 +243,85 @@ def get_update_status():
     """API endpoint to get current update status."""
     return jsonify(update_status)
 
+@app.route('/api/last20days')
+def get_last_20_days_data():
+    """Get stocks from the last 20 trading days with their performance."""
+    try:
+        # Get all available dates sorted in descending order
+        files = glob.glob(os.path.join(DATA_DIR, '*_创业板涨停.csv'))
+        dates = []
+        for f in files:
+            basename = os.path.basename(f)
+            date_str = basename.split('_')[0]
+            dates.append(date_str)
+        
+        # Sort dates descending and take the first 20
+        dates.sort(reverse=True)
+        last_20_dates = dates[:20]
+        
+        # Collect all stocks from these dates
+        all_stocks = {}
+        
+        for date in last_20_dates:
+            file_path = os.path.join(DATA_DIR, f'{date}_创业板涨停.csv')
+            if not os.path.exists(file_path):
+                continue
+            
+            try:
+                df = pd.read_csv(file_path)
+                for _, row in df.iterrows():
+                    stock_code = str(row['股票代码'])
+                    stock_name = row['股票简称']
+                    
+                    # Calculate T+1 Open Performance
+                    kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{stock_code}.SZ.csv')
+                    t1_open_pct = None
+                    
+                    if os.path.exists(kline_file):
+                        try:
+                            kline_df = pd.read_csv(kline_file)
+                            kline_df['日期'] = kline_df['日期'].astype(str)
+                            
+                            # Find index of the date
+                            matches = kline_df.index[kline_df['日期'] == date].tolist()
+                            
+                            if matches:
+                                idx = matches[0]
+                                # Check if T+1 exists
+                                if idx + 1 < len(kline_df):
+                                    t_close = kline_df.iloc[idx]['收盘']
+                                    t1_open = kline_df.iloc[idx+1]['开盘']
+                                    t1_close = kline_df.iloc[idx+1]['收盘']
+                                    
+                                    if t_close != 0:
+                                        t1_open_pct = (t1_open - t_close) / t_close * 100
+                                        t1_open_pct = round(t1_open_pct, 2)
+                        except Exception as e:
+                            print(f"Error calculating T+1 for {stock_code} on {date}: {e}")
+                    
+                    # Store stock data
+                    if stock_code not in all_stocks:
+                        all_stocks[stock_code] = {
+                            'code': stock_code,
+                            'name': stock_name,
+                            'dates': []
+                        }
+                    
+                    all_stocks[stock_code]['dates'].append({
+                        'date': date,
+                        't1_open_pct': t1_open_pct
+                    })
+            except Exception as e:
+                print(f"Error reading data for {date}: {e}")
+        
+        # Convert to list and sort by total occurrences
+        result = list(all_stocks.values())
+        result.sort(key=lambda x: len(x['dates']), reverse=True)
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     # Start background update thread

@@ -325,6 +325,11 @@
                     <span class="toggle-slider"></span>
                     <span>并列显示 (对比模式)</span>
                 </label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="last20DaysToggle">
+                    <span class="toggle-slider"></span>
+                    <span>最近20日数据</span>
+                </label>
             </div>
         </div>
 
@@ -348,6 +353,7 @@
         let currentDate = null;
         let currentStock = null;
         let chartInstances = []; // Store all chart instances
+        let isLast20DaysMode = false; // Track if we're in last 20 days mode
 
         // Zoom persistence state
         // We store the number of bars visible (e.g., 60 bars) rather than percentage
@@ -358,6 +364,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             fetchDates();
 
+            // Compare mode toggle
             const toggle = document.getElementById('compareModeToggle');
             toggle.addEventListener('change', (e) => {
                 const panel = document.getElementById('chartPanel');
@@ -381,6 +388,38 @@
                             panel.innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
                         }
                     }
+                }
+            });
+
+            // Last 20 days toggle
+            const last20DaysToggle = document.getElementById('last20DaysToggle');
+            last20DaysToggle.addEventListener('change', (e) => {
+                isLast20DaysMode = e.target.checked;
+                
+                // Clear existing selections and data
+                currentDate = null;
+                currentStock = null;
+                
+                // Update UI
+                if (isLast20DaysMode) {
+                    // Hide date list
+                    document.querySelector('.sidebar').style.display = 'none';
+                    // Update title
+                    document.getElementById('currentDateTitle').textContent = '最近20日数据';
+                    // Fetch and display last 20 days data
+                    fetchLast20DaysData();
+                } else {
+                    // Show date list
+                    document.querySelector('.sidebar').style.display = 'block';
+                    // Reset title
+                    document.getElementById('currentDateTitle').textContent = '请选择日期';
+                    // Clear stock list and chart panel
+                    document.getElementById('stockList').innerHTML = '<div class="empty-state" style="height: 200px;">请选择日期</div>';
+                    document.getElementById('stockCount').textContent = '0';
+                    document.getElementById('chartPanel').innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
+                    // Dispose all charts
+                    chartInstances.forEach(c => c.dispose());
+                    chartInstances = [];
                 }
             });
 
@@ -426,28 +465,33 @@
         }
 
         async function fetchStocks(date) {
-    try {
-        const response = await fetch(`/api/stocks/${date}`);
-        let stocks = await response.json();
-        const list = document.getElementById('stockList');
-        document.getElementById('stockCount').textContent = stocks.length;
-        list.innerHTML = '';
+            // Skip if in last 20 days mode
+            if (isLast20DaysMode) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/stocks/${date}`);
+                let stocks = await response.json();
+                const list = document.getElementById('stockList');
+                document.getElementById('stockCount').textContent = stocks.length;
+                list.innerHTML = '';
 
-        if (stocks.length === 0) {
-            list.innerHTML = '<div class="empty-state" style="height: 100px;">无数据</div>';
-            return;
-        }
+                if (stocks.length === 0) {
+                    list.innerHTML = '<div class="empty-state" style="height: 100px;">无数据</div>';
+                    return;
+                }
 
-        // 按次日开盘涨跌幅排序（从高到低）
-        stocks.sort((a, b) => {
-            // 处理null值，将有数据的排在前面
-            if (a.t1_open_pct === null && b.t1_open_pct !== null) return 1;
-            if (a.t1_open_pct !== null && b.t1_open_pct === null) return -1;
-            // 降序排序
-            return b.t1_open_pct - a.t1_open_pct;
-        });
+                // 按次日开盘涨跌幅排序（从高到低）
+                stocks.sort((a, b) => {
+                    // 处理null值，将有数据的排在前面
+                    if (a.t1_open_pct === null && b.t1_open_pct !== null) return 1;
+                    if (a.t1_open_pct !== null && b.t1_open_pct === null) return -1;
+                    // 降序排序
+                    return b.t1_open_pct - a.t1_open_pct;
+                });
 
-        stocks.forEach(stock => {
+                stocks.forEach(stock => {
                     const card = document.createElement('div');
                     card.className = 'stock-card';
                     card.dataset.code = stock.code; // Store code for styling
@@ -491,6 +535,90 @@
             } catch (e) {
                 console.error('Error fetching stocks:', e);
             }
+        }
+
+        // New function to fetch last 20 days data
+        async function fetchLast20DaysData() {
+            try {
+                const response = await fetch('/api/last20days');
+                const stocks = await response.json();
+                const list = document.getElementById('stockList');
+                document.getElementById('stockCount').textContent = stocks.length;
+                list.innerHTML = '';
+
+                if (stocks.length === 0) {
+                    list.innerHTML = '<div class="empty-state" style="height: 100px;">最近20日无数据</div>';
+                    return;
+                }
+
+                stocks.forEach(stock => {
+                    const card = document.createElement('div');
+                    card.className = 'stock-card';
+                    card.dataset.code = stock.code; // Store code for styling
+
+                    // Calculate average performance across all dates
+                    let totalPct = 0;
+                    let count = 0;
+                    let lastDate = null;
+                    
+                    stock.dates.forEach(dateData => {
+                        if (dateData.t1_open_pct !== null) {
+                            totalPct += dateData.t1_open_pct;
+                            count++;
+                        }
+                        if (!lastDate || dateData.date > lastDate) {
+                            lastDate = dateData.date;
+                        }
+                    });
+                    
+                    const avgPct = count > 0 ? totalPct / count : null;
+                    
+                    let pctClass = 'pct-flat';
+                    let pctText = '--';
+                    if (avgPct !== null) {
+                        pctText = (avgPct > 0 ? '+' : '') + avgPct.toFixed(2) + '%';
+                        if (avgPct > 0) pctClass = 'pct-up';
+                        else if (avgPct < 0) pctClass = 'pct-down';
+                    }
+
+                    card.innerHTML = `
+                    <div class="stock-header">
+                        <span class="stock-name">${stock.name}</span>
+                        <span class="stock-code">${stock.code}</span>
+                    </div>
+                    <div class="stock-info">
+                        <span>涨停次数:</span>
+                        <span class="pct-change">${stock.dates.length}次</span>
+                    </div>
+                    <div class="stock-info">
+                        <span>平均次日开盘:</span>
+                        <span class="pct-change ${pctClass}">${pctText}</span>
+                    </div>
+                    <div class="stock-info">
+                        <span>最近涨停:</span>
+                        <span class="pct-change">${lastDate || '--'}</span>
+                    </div>
+                `;
+
+                    card.onclick = () => selectStockFromLast20Days(stock.code, stock.name, lastDate, card);
+                    list.appendChild(card);
+                });
+            } catch (e) {
+                console.error('Error fetching last 20 days data:', e);
+            }
+        }
+
+        // New function to select stock from last 20 days data
+        function selectStockFromLast20Days(code, name, lastDate, element) {
+            currentStock = code;
+            currentDate = lastDate;
+
+            // Update UI
+            document.querySelectorAll('.stock-card').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            // Render chart for the last occurrence
+            renderChart(lastDate, code, name);
         }
 
         async function selectStock(code, name, element) {
