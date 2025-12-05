@@ -91,6 +91,51 @@
             gap: 15px;
         }
 
+        .update-button {
+            padding: 8px 15px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        .update-button:hover:not(:disabled) {
+            background-color: #3a80d2;
+        }
+
+        .update-button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+
+        .update-status {
+            font-size: 12px;
+            color: #888;
+            margin-left: 10px;
+        }
+
+        .update-status.success {
+            color: var(--success-color);
+        }
+
+        .update-status.error {
+            color: var(--danger-color);
+        }
+
+        .update-status.running {
+            color: var(--accent-color);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
         .toggle-switch {
             display: flex;
             align-items: center;
@@ -320,6 +365,8 @@
         <div class="top-bar">
             <div id="currentDateTitle">请选择日期</div>
             <div class="controls">
+                <button id="updateButton" class="update-button">手动更新数据</button>
+                <span id="updateStatus"></span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="compareModeToggle">
                     <span class="toggle-slider"></span>
@@ -901,6 +948,88 @@
                 console.error('Error rendering chart:', e);
             }
         }
+
+        // 手动更新数据功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const updateButton = document.getElementById('updateButton');
+            const updateStatus = document.getElementById('updateStatus');
+
+            // 定期检查更新状态
+            function checkUpdateStatus() {
+                fetch('/api/update/status')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.is_running) {
+                            updateButton.disabled = true;
+                            updateStatus.textContent = '数据更新中...';
+                            updateStatus.className = 'update-status running';
+                        } else {
+                            updateButton.disabled = false;
+                            if (data.last_status === 'success') {
+                                updateStatus.textContent = `上次更新成功: ${data.last_end_time}`;
+                                updateStatus.className = 'update-status success';
+                            } else if (data.last_status === 'failed' || data.last_status === 'error') {
+                                updateStatus.textContent = `更新失败: ${data.error}`;
+                                updateStatus.className = 'update-status error';
+                            } else {
+                                updateStatus.textContent = `上次更新: ${data.last_end_time || '从未更新'}`;
+                                updateStatus.className = 'update-status';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取更新状态失败:', error);
+                    });
+            }
+
+            // 点击更新按钮事件
+            updateButton.addEventListener('click', function() {
+                fetch('/api/update/start', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateStatus.textContent = '数据更新已开始...';
+                        updateStatus.className = 'update-status running';
+                        updateButton.disabled = true;
+                        // 定期检查更新状态
+                        const interval = setInterval(() => {
+                            fetch('/api/update/status')
+                                .then(response => response.json())
+                                .then(statusData => {
+                                    if (!statusData.is_running) {
+                                        clearInterval(interval);
+                                        updateButton.disabled = false;
+                                        if (statusData.last_status === 'success') {
+                                            updateStatus.textContent = `更新成功: ${statusData.last_end_time}`;
+                                            updateStatus.className = 'update-status success';
+                                            // 更新成功后重新加载日期列表
+                                            loadDateList();
+                                        } else {
+                                            updateStatus.textContent = `更新失败: ${statusData.error}`;
+                                            updateStatus.className = 'update-status error';
+                                        }
+                                    }
+                                });
+                        }, 3000); // 每3秒检查一次
+                    } else {
+                        updateStatus.textContent = data.message;
+                        updateStatus.className = 'update-status error';
+                    }
+                })
+                .catch(error => {
+                    console.error('启动更新失败:', error);
+                    updateStatus.textContent = '启动更新失败';
+                    updateStatus.className = 'update-status error';
+                });
+            });
+
+            // 初始加载更新状态
+            checkUpdateStatus();
+            // 每1分钟自动检查一次更新状态
+            setInterval(checkUpdateStatus, 60000);
+        });
     </script>
 
 </body>
