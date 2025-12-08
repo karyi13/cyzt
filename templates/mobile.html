@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>创业板涨停数据 - 手机版</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.0/dist/echarts.min.js"></script>
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+
+        /* 顶部导航栏 */
+        .top-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background-color: #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            z-index: 1000;
+            border-bottom: 1px solid #444;
+        }
+
+        .top-nav h1 {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            color: #ffffff;
+            font-size: 14px;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        .nav-btn:hover {
+            background-color: #444;
+        }
+
+        /* 日期选择器 */
+        .date-selector {
+            margin-top: 50px;
+            padding: 15px;
+            background-color: #2a2a2a;
+        }
+
+        .date-selector h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #cccccc;
+        }
+
+        .date-input {
+            width: 100%;
+            padding: 10px;
+            background-color: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #ffffff;
+            font-size: 14px;
+        }
+
+        .date-input:focus {
+            outline: none;
+            border-color: #1890ff;
+        }
+
+        /* 股票列表 */
+        .stock-list {
+            padding: 15px;
+        }
+
+        .list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .list-header h2 {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .stock-count {
+            color: #1890ff;
+        }
+
+        .stock-card {
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            border: 1px solid #444;
+            transition: all 0.2s ease;
+        }
+
+        .stock-card:hover {
+            background-color: #333;
+            border-color: #555;
+        }
+
+        .stock-card.active {
+            border-color: #1890ff;
+            background-color: #2a2a40;
+        }
+
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .stock-name {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .stock-code {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .stock-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .stock-info span:first-child {
+            color: #999;
+        }
+
+        .pct-change {
+            font-weight: 500;
+        }
+
+        .pct-up {
+            color: #f5222d;
+        }
+
+        .pct-down {
+            color: #52c41a;
+        }
+
+        .pct-flat {
+            color: #999;
+        }
+
+        /* 图表区域 */
+        .chart-panel {
+            padding: 15px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .chart-header h2 {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 300px;
+            margin-bottom: 10px;
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        /* 加载状态 */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+            color: #999;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            color: #999;
+            font-size: 14px;
+        }
+
+        /* 底部信息 */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-nav">
+        <h1>创业板涨停数据</h1>
+        <button class="nav-btn" onclick="switchToDesktop()">电脑版</button>
+    </div>
+
+    <!-- 日期选择器 -->
+    <div class="date-selector">
+        <h3>选择日期</h3>
+        <input type="date" id="datePicker" class="date-input">
+    </div>
+
+    <!-- 股票列表 -->
+    <div class="stock-list">
+        <div class="list-header">
+            <h2>涨停股票列表</h2>
+            <span class="stock-count">共 <span id="stockCount">0</span> 只</span>
+        </div>
+        <div id="stockList" class="loading">加载中...</div>
+    </div>
+
+    <!-- 图表区域 -->
+    <div class="chart-panel">
+        <div class="chart-header">
+            <h2 id="chartTitle">股票K线图</h2>
+        </div>
+        <div id="chartContainer" class="chart-container"></div>
+    </div>
+
+    <!-- 底部信息 -->
+    <div class="footer">
+        <p>创业板涨停数据分析</p>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentDate = '';
+        let currentStock = '';
+        let chartInstance = null;
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initApp();
+        });
+
+        // 初始化应用
+        async function initApp() {
+            await fetchDates();
+            await fetchStocks(currentDate);
+        }
+
+        // 获取可用日期
+        async function fetchDates() {
+            try {
+                const response = await fetch('/api/dates');
+                const dates = await response.json();
+                
+                if (dates.length > 0) {
+                    currentDate = dates[0];
+                    const datePicker = document.getElementById('datePicker');
+                    datePicker.value = currentDate;
+                    
+                    // 添加日期选择事件监听
+                    datePicker.addEventListener('change', function() {
+                        currentDate = this.value;
+                        fetchStocks(currentDate);
+                    });
+                }
+            } catch (e) {
+                console.error('Error fetching dates:', e);
+            }
+        }
+
+        // 获取股票数据
+        async function fetchStocks(date) {
+            const list = document.getElementById('stockList');
+            list.innerHTML = '<div class="loading">加载中...</div>';
+
+            try {
+                const response = await fetch(`/api/stocks/${date}`);
+                let stocks = await response.json();
+                
+                document.getElementById('stockCount').textContent = stocks.length;
+                list.innerHTML = '';
+
+                if (stocks.length === 0) {
+                    list.innerHTML = '<div class="empty-state">无数据</div>';
+                    return;
+                }
+
+                // 按次日开盘涨跌幅排序
+                stocks.sort((a, b) => {
+                    if (a.t1_open_pct === null && b.t1_open_pct !== null) return 1;
+                    if (a.t1_open_pct !== null && b.t1_open_pct === null) return -1;
+                    return b.t1_open_pct - a.t1_open_pct;
+                });
+
+                stocks.forEach(stock => {
+                    const card = document.createElement('div');
+                    card.className = 'stock-card';
+                    card.dataset.code = stock.code;
+
+                    let pctClass = 'pct-flat';
+                    let pctText = '--';
+                    if (stock.t1_open_pct !== null) {
+                        pctText = (stock.t1_open_pct > 0 ? '+' : '') + stock.t1_open_pct + '%';
+                        if (stock.t1_open_pct > 0) pctClass = 'pct-up';
+                        else if (stock.t1_open_pct < 0) pctClass = 'pct-down';
+                    }
+
+                    // 计算盈亏比例
+                    let profitPct = 0;
+                    if (stock.t1_open_price && stock.t2_close_price) {
+                        profitPct = ((stock.t2_close_price - stock.t1_open_price) / stock.t1_open_price) * 100;
+                    }
+                    let profitPctText = profitPct.toFixed(2) + '%';
+                    let profitClass = 'pct-flat';
+                    if (profitPct > 0) profitClass = 'pct-up';
+                    else if (profitPct < 0) profitClass = 'pct-down';
+
+                    card.innerHTML = `
+                        <div class="stock-header">
+                            <span class="stock-name">${stock.name}</span>
+                            <span class="stock-code">${stock.code}</span>
+                        </div>
+                        <div class="stock-info">
+                            <span>次日开盘:</span>
+                            <span class="pct-change ${pctClass}">${pctText}</span>
+                        </div>
+                        <div class="stock-info">
+                            <span>盈亏比例:</span>
+                            <span class="pct-change ${profitClass}">${profitPctText}</span>
+                        </div>
+                    `;
+
+                    card.onclick = () => selectStock(stock.code, stock.name, card);
+                    list.appendChild(card);
+                });
+
+                // 默认选择第一只股票
+                if (stocks.length > 0) {
+                    selectStock(stocks[0].code, stocks[0].name, null);
+                }
+            } catch (e) {
+                console.error('Error fetching stocks:', e);
+                list.innerHTML = '<div class="empty-state">加载失败</div>';
+            }
+        }
+
+        // 选择股票
+        async function selectStock(code, name, element) {
+            currentStock = code;
+
+            // 更新UI
+            document.querySelectorAll('.stock-card').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            // 更新图表标题
+            document.getElementById('chartTitle').textContent = `${name} (${code}) K线图`;
+
+            // 渲染图表
+            await renderChart(currentDate, code, name);
+        }
+
+        // 渲染图表
+        async function renderChart(date, code, name) {
+            if (chartInstance) {
+                chartInstance.dispose();
+            }
+
+            chartInstance = echarts.init(document.getElementById('chartContainer'));
+
+            try {
+                const response = await fetch(`/api/kline/${date}/${code}`);
+                const klineData = await response.json();
+
+                if (klineData.error) {
+                    throw new Error(klineData.error);
+                }
+
+                // 转换数据格式
+                const candlestickData = [];
+                const dateLabels = [];
+                const volumeData = [];
+
+                klineData.forEach(item => {
+                    if (item.date && item.open && item.close && item.low && item.high && item.vol) {
+                        candlestickData.push([item.open, item.close, item.low, item.high]);
+                        dateLabels.push(item.date);
+                        volumeData.push(item.vol);
+                    }
+                });
+
+                // 设置图表选项
+                const option = {
+                    tooltip: {
+                        trigger: 'axis',
+                        axisPointer: {
+                            type: 'cross'
+                        }
+                    },
+                    grid: [
+                        {
+                            left: '10%',
+                            right: '10%',
+                            height: '60%'
+                        },
+                        {
+                            left: '10%',
+                            right: '10%',
+                            top: '75%',
+                            height: '15%'
+                        }
+                    ],
+                    xAxis: [
+                        {
+                            type: 'category',
+                            data: dateLabels,
+                            scale: true,
+                            boundaryGap: false,
+                            axisLine: {onZero: false},
+                            splitLine: {show: false},
+                            axisLabel: {show: false},
+                            splitArea: {show: false}
+                        },
+                        {
+                            type: 'category',
+                            gridIndex: 1,
+                            data: dateLabels,
+                            scale: true,
+                            boundaryGap: false,
+                            axisLine: {onZero: false},
+                            axisTick: {show: false},
+                            splitLine: {show: false},
+                            axisLabel: {show: false},
+                            splitArea: {show: false}
+                        }
+                    ],
+                    yAxis: [
+                        {
+                            scale: true,
+                            splitArea: {show: true},
+                            axisLabel: {
+                                color: '#ffffff'
+                            }
+                        },
+                        {
+                            scale: true,
+                            gridIndex: 1,
+                            splitNumber: 2,
+                            axisLabel: {show: false},
+                            axisLine: {show: false},
+                            axisTick: {show: false},
+                            splitLine: {show: false}
+                        }
+                    ],
+                    dataZoom: [
+                        {
+                            type: 'inside',
+                            xAxisIndex: [0, 1],
+                            start: 50,
+                            end: 100
+                        },
+                        {
+                            show: true,
+                            xAxisIndex: [0, 1],
+                            type: 'slider',
+                            bottom: '5%',
+                            start: 50,
+                            end: 100
+                        }
+                    ],
+                    series: [
+                        {
+                            name: 'K线',
+                            type: 'candlestick',
+                            data: candlestickData,
+                            itemStyle: {
+                                color: '#f5222d',
+                                color0: '#52c41a',
+                                borderColor: '#f5222d',
+                                borderColor0: '#52c41a'
+                            }
+                        },
+                        {
+                            name: '成交量',
+                            type: 'bar',
+                            xAxisIndex: 1,
+                            yAxisIndex: 1,
+                            data: volumeData,
+                            itemStyle: {
+                                color: function(params) {
+                                    const dataIndex = params.dataIndex;
+                                    const currentCandle = candlestickData[dataIndex];
+                                    if (!currentCandle) return '#444';
+                                    return currentCandle[1] > currentCandle[0] ? '#f5222d' : '#52c41a';
+                                }
+                            }
+                        }
+                    ]
+                };
+
+                chartInstance.setOption(option);
+            } catch (e) {
+                console.error('Error rendering chart:', e);
+                chartInstance.setOption({
+                    title: {
+                        text: '暂无K线数据',
+                        left: 'center',
+                        top: 'center',
+                        textStyle: {
+                            color: '#999',
+                            fontSize: 14
+                        }
+                    }
+                });
+            }
+        }
+
+        // 窗口大小变化时重新调整图表
+        window.addEventListener('resize', function() {
+            if (chartInstance) {
+                chartInstance.resize();
+            }
+        });
+
+        // 切换到电脑版
+        function switchToDesktop() {
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

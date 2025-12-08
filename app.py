@@ -36,6 +36,10 @@ update_status = {
 def index():
     return render_template('index.html')
 
+@app.route('/mobile')
+def mobile():
+    return render_template('mobile.html')
+
 @app.route('/api/dates')
 def get_dates():
     """Get list of available dates from limit-up files."""

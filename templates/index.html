@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -130,6 +129,21 @@
             animation: pulse 1.5s infinite;
         }
 
+        .mobile-btn {
+            padding: 8px 15px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        .mobile-btn:hover {
+            background-color: #3a80d2;
+        }
+
         @keyframes pulse {
             0% { opacity: 0.6; }
             50% { opacity: 1; }
@@ -244,7 +258,18 @@
             justify-content: space-between;
             align-items: center;
             margin-top: 8px;
+        }
+
+        .stock-profit {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
             font-size: 0.9em;
+        }
+
+        .profit-label {
+            color: #888;
         }
 
         .pct-change {
@@ -271,19 +296,15 @@
             padding: 20px;
             display: flex;
             flex-direction: column;
-            /* Default: stack vertically if multiple */
             background-color: var(--bg-color);
             overflow-y: auto;
-            /* Allow scrolling for multiple charts */
             gap: 20px;
         }
 
         .chart-container {
             width: 100%;
             height: 100%;
-            /* Fill parent in single mode */
             min-height: 500px;
-            /* Minimum height for multi mode */
             border-radius: 8px;
             background-color: var(--card-bg);
             padding: 10px;
@@ -304,7 +325,6 @@
             cursor: pointer;
             z-index: 10;
             display: none;
-            /* Hidden by default */
         }
 
         .chart-close-btn:hover {
@@ -313,7 +333,6 @@
 
         .multi-mode .chart-container {
             height: 500px;
-            /* Fixed height in multi mode */
             flex-shrink: 0;
         }
 
@@ -349,9 +368,7 @@
         }
     </style>
 </head>
-
 <body>
-
     <div class="sidebar">
         <div class="sidebar-header">
             📅 历史日期
@@ -367,6 +384,7 @@
             <div class="controls">
                 <button id="updateButton" class="update-button">手动更新数据</button>
                 <span id="updateStatus"></span>
+                <button class="mobile-btn" onclick="window.location.href='/mobile'">手机版</button>
                 <label class="toggle-switch">
                     <input type="checkbox" id="compareModeToggle">
                     <span class="toggle-slider"></span>
@@ -399,553 +417,298 @@
     <script>
         let currentDate = null;
         let currentStock = null;
-        let chartInstances = []; // Store all chart instances
-        let isLast20DaysMode = false; // Track if we're in last 20 days mode
+        let chartInstances = [];
+        let savedVisibleBarCount = 50;
+        let isCompareMode = false;
+        let showLast20Days = false;
 
-        // Zoom persistence state
-        // We store the number of bars visible (e.g., 60 bars) rather than percentage
-        // to maintain consistent "zoom level" across different datasets.
-        let savedVisibleBarCount = 60;
-
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchDates();
-
-            // Compare mode toggle
-            const toggle = document.getElementById('compareModeToggle');
-            toggle.addEventListener('change', (e) => {
-                const panel = document.getElementById('chartPanel');
-                if (e.target.checked) {
-                    panel.classList.add('multi-mode');
-                } else {
-                    panel.classList.remove('multi-mode');
-                    // If switching off compare mode, keep only the last chart or clear
-                    if (chartInstances.length > 1) {
-                        // Keep the last one, remove others
-                        const lastChart = chartInstances[chartInstances.length - 1];
-                        // Clear DOM
-                        panel.innerHTML = '';
-                        // Re-append last chart's container (need to re-render effectively or just clear all and re-select)
-                        // Simpler: Clear all and re-select current stock if exists
-                        chartInstances.forEach(c => c.dispose());
-                        chartInstances = [];
-                        if (currentStock && currentDate) {
-                            renderChart(currentDate, currentStock, "Loading..."); // Name might be lost, need to store it
-                        } else {
-                            panel.innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
-                        }
-                    }
-                }
-            });
-
-            // Last 20 days toggle
-            const last20DaysToggle = document.getElementById('last20DaysToggle');
-            last20DaysToggle.addEventListener('change', (e) => {
-                isLast20DaysMode = e.target.checked;
-                
-                // Clear existing selections and data
-                currentDate = null;
-                currentStock = null;
-                
-                // Update UI
-                if (isLast20DaysMode) {
-                    // Hide date list
-                    document.querySelector('.sidebar').style.display = 'none';
-                    // Update title
-                    document.getElementById('currentDateTitle').textContent = '最近20日数据';
-                    // Fetch and display last 20 days data
-                    fetchLast20DaysData();
-                } else {
-                    // Show date list
-                    document.querySelector('.sidebar').style.display = 'block';
-                    // Reset title
-                    document.getElementById('currentDateTitle').textContent = '请选择日期';
-                    // Clear stock list and chart panel
-                    document.getElementById('stockList').innerHTML = '<div class="empty-state" style="height: 200px;">请选择日期</div>';
-                    document.getElementById('stockCount').textContent = '0';
-                    document.getElementById('chartPanel').innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
-                    // Dispose all charts
-                    chartInstances.forEach(c => c.dispose());
-                    chartInstances = [];
-                }
-            });
-
-            window.addEventListener('resize', () => {
-                chartInstances.forEach(chart => chart.resize());
-            });
-        });
-
-        async function fetchDates() {
-            try {
-                const response = await fetch('/api/dates');
-                const dates = await response.json();
-                const list = document.getElementById('dateList');
-                list.innerHTML = '';
-
-                dates.forEach(date => {
-                    const div = document.createElement('div');
-                    div.className = 'date-item';
-                    div.textContent = date;
-                    div.onclick = () => selectDate(date, div);
-                    list.appendChild(div);
+        // 加载日期列表
+        function loadDateList() {
+            fetch('/api/dates')
+                .then(response => response.json())
+                .then(dates => {
+                    const dateList = document.getElementById('dateList');
+                    dateList.innerHTML = '';
+                    
+                    dates.forEach(date => {
+                        const dateItem = document.createElement('div');
+                        dateItem.className = 'date-item';
+                        dateItem.textContent = date;
+                        dateItem.dataset.date = date;
+                        
+                        dateItem.addEventListener('click', () => selectDate(date));
+                        dateList.appendChild(dateItem);
+                    });
+                })
+                .catch(error => {
+                    console.error('加载日期列表失败:', error);
                 });
-
-                // Select first date by default
-                if (dates.length > 0) {
-                    selectDate(dates[0], list.firstChild);
-                }
-            } catch (e) {
-                console.error('Error fetching dates:', e);
-            }
         }
 
-        async function selectDate(date, element) {
+        // 选择日期
+        function selectDate(date) {
             currentDate = date;
-
-            // Update UI
-            document.querySelectorAll('.date-item').forEach(el => el.classList.remove('active'));
-            if (element) element.classList.add('active');
-            document.getElementById('currentDateTitle').textContent = `${date} 涨停复盘`;
-
-            // Fetch stocks
-            fetchStocks(date);
+            currentStock = null;
+            
+            // 更新日期选择状态
+            document.querySelectorAll('.date-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-date="${date}"]`).classList.add('active');
+            
+            // 更新标题
+            document.getElementById('currentDateTitle').textContent = date;
+            
+            // 加载股票列表
+            loadStockList(date);
+            
+            // 清空图表
+            clearCharts();
         }
 
-        async function fetchStocks(date) {
-            // Skip if in last 20 days mode
-            if (isLast20DaysMode) {
-                return;
+        // 加载股票列表
+        function loadStockList(date) {
+            fetch(`/api/stocks/${date}`)
+                .then(response => response.json())
+                .then(stocks => {
+                    const stockList = document.getElementById('stockList');
+                    
+                    if (stocks.length === 0) {
+                        stockList.innerHTML = '<div class="empty-state" style="height: 200px;">当日无涨停股票</div>';
+                        document.getElementById('stockCount').textContent = '0';
+                        return;
+                    }
+                    
+                    document.getElementById('stockCount').textContent = stocks.length;
+                    stockList.innerHTML = '';
+                    
+                    stocks.forEach(stock => {
+                        const stockCard = document.createElement('div');
+                        stockCard.className = 'stock-card';
+                        stockCard.dataset.code = stock.code;
+                        
+                        // 设置T+1开盘涨跌幅
+                        let pctClass = 'pct-flat';
+                        let pctText = '0%';
+                        let priceText = '';
+                        
+                        if (stock.t1_open_pct !== null) {
+                            pctText = (stock.t1_open_pct > 0 ? '+' : '') + stock.t1_open_pct + '%';
+                            if (stock.t1_open_pct > 0) pctClass = 'pct-up';
+                            else if (stock.t1_open_pct < 0) pctClass = 'pct-down';
+                        }
+                        
+                        if (stock.t1_open_price !== null) {
+                            priceText = stock.t1_open_price.toFixed(2) + '元';
+                        }
+                        
+                        // 计算盈亏比例
+                        let profitPct = 0;
+                        let profitPctText = '';
+                        let profitClass = 'pct-flat';
+                        
+                        if (stock.t1_open_price && stock.t2_close_price) {
+                            profitPct = ((stock.t2_close_price - stock.t1_open_price) / stock.t1_open_price) * 100;
+                            profitPctText = (profitPct > 0 ? '+' : '') + profitPct.toFixed(2) + '%';
+                            if (profitPct > 0) profitClass = 'pct-up';
+                            else if (profitPct < 0) profitClass = 'pct-down';
+                        }
+                        
+                        stockCard.innerHTML = `
+                            <div class="stock-header">
+                                <span class="stock-name">${stock.name}</span>
+                                <span class="stock-code">${stock.code}</span>
+                            </div>
+                            <div class="stock-info">
+                                <span class="pct-change ${pctClass}">${pctText}</span>
+                                <span>${priceText}</span>
+                            </div>
+                            <div class="stock-profit">
+                                <span class="profit-label">盈亏比例:</span>
+                                <span class="pct-change ${profitClass}">${profitPctText}</span>
+                            </div>
+                        `;
+                        
+                        stockCard.addEventListener('click', () => selectStock(stock.code));
+                        stockList.appendChild(stockCard);
+                    });
+                })
+                .catch(error => {
+                    console.error('加载股票列表失败:', error);
+                });
+        }
+
+        // 选择股票
+        function selectStock(code) {
+            currentStock = code;
+            
+            // 更新股票选择状态
+            document.querySelectorAll('.stock-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            document.querySelector(`[data-code="${code}"]`).classList.add('active');
+            
+            // 加载K线图
+            loadKLine(code, currentDate);
+        }
+
+        // 加载K线图
+        function loadKLine(code, date) {
+            if (!isCompareMode) {
+                clearCharts();
             }
             
-            try {
-                const response = await fetch(`/api/stocks/${date}`);
-                let stocks = await response.json();
-                const list = document.getElementById('stockList');
-                document.getElementById('stockCount').textContent = stocks.length;
-                list.innerHTML = '';
-
-                if (stocks.length === 0) {
-                    list.innerHTML = '<div class="empty-state" style="height: 100px;">无数据</div>';
-                    return;
-                }
-
-                // 按次日开盘涨跌幅排序（从高到低）
-                stocks.sort((a, b) => {
-                    // 处理null值，将有数据的排在前面
-                    if (a.t1_open_pct === null && b.t1_open_pct !== null) return 1;
-                    if (a.t1_open_pct !== null && b.t1_open_pct === null) return -1;
-                    // 降序排序
-                    return b.t1_open_pct - a.t1_open_pct;
-                });
-
-                stocks.forEach(stock => {
-                    const card = document.createElement('div');
-                    card.className = 'stock-card';
-                    card.dataset.code = stock.code; // Store code for styling
-
-                    let pctClass = 'pct-flat';
-                    let pctText = '--';
-                    if (stock.t1_open_pct !== null) {
-                        pctText = (stock.t1_open_pct > 0 ? '+' : '') + stock.t1_open_pct + '%';
-                        if (stock.t1_open_pct > 0) pctClass = 'pct-up';
-                        else if (stock.t1_open_pct < 0) pctClass = 'pct-down';
+            const url = showLast20Days ? `/api/kline/${code}/last20days` : `/api/kline/${code}`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('加载K线数据失败:', data.error);
+                        return;
                     }
-
-                    // 计算盈亏比例：(T+2日收盘价 - T+1日开盘价) / T+1日开盘价 * 100%
-                    let profitPct = 0;
-                    if (stock.t1_open_price && stock.t2_close_price) {
-                        profitPct = ((stock.t2_close_price - stock.t1_open_price) / stock.t1_open_price) * 100;
-                    }
-                    let profitPctText = profitPct.toFixed(2) + '%';
-                    let profitClass = 'pct-flat';
-                    if (profitPct > 0) profitClass = 'pct-up';
-                    else if (profitPct < 0) profitClass = 'pct-down';
-
-                    card.innerHTML = `
-                    <div class="stock-header">
-                        <span class="stock-name">${stock.name}</span>
-                        <span class="stock-code">${stock.code}</span>
-                    </div>
-                    <div class="stock-info">
-                        <span>次日开盘:</span>
-                        <span class="pct-change ${pctClass}">${pctText}</span>
-                    </div>
-                    <div class="stock-info">
-                        <span>盈亏比例:</span>
-                        <span class="pct-change ${profitClass}">${profitPctText}</span>
-                    </div>
-                `;
-
-                    card.onclick = () => selectStock(stock.code, stock.name, card);
-                    list.appendChild(card);
+                    
+                    renderChart(data, code);
+                })
+                .catch(error => {
+                    console.error('加载K线数据失败:', error);
                 });
-            } catch (e) {
-                console.error('Error fetching stocks:', e);
-            }
         }
 
-        // New function to fetch last 20 days data
-        async function fetchLast20DaysData() {
-            try {
-                const response = await fetch('/api/last20days');
-                const stocks = await response.json();
-                const list = document.getElementById('stockList');
-                document.getElementById('stockCount').textContent = stocks.length;
-                list.innerHTML = '';
-
-                if (stocks.length === 0) {
-                    list.innerHTML = '<div class="empty-state" style="height: 100px;">最近20日无数据</div>';
-                    return;
-                }
-
-                stocks.forEach(stock => {
-                    const card = document.createElement('div');
-                    card.className = 'stock-card';
-                    card.dataset.code = stock.code; // Store code for styling
-
-                    // Calculate average performance across all dates
-                    let totalPct = 0;
-                    let count = 0;
-                    let lastDate = null;
-                    
-                    stock.dates.forEach(dateData => {
-                        if (dateData.t1_open_pct !== null) {
-                            totalPct += dateData.t1_open_pct;
-                            count++;
-                        }
-                        if (!lastDate || dateData.date > lastDate) {
-                            lastDate = dateData.date;
-                        }
-                    });
-                    
-                    const avgPct = count > 0 ? totalPct / count : null;
-                    
-                    let pctClass = 'pct-flat';
-                    let pctText = '--';
-                    if (avgPct !== null) {
-                        pctText = (avgPct > 0 ? '+' : '') + avgPct.toFixed(2) + '%';
-                        if (avgPct > 0) pctClass = 'pct-up';
-                        else if (avgPct < 0) pctClass = 'pct-down';
-                    }
-
-                    card.innerHTML = `
-                    <div class="stock-header">
-                        <span class="stock-name">${stock.name}</span>
-                        <span class="stock-code">${stock.code}</span>
-                    </div>
-                    <div class="stock-info">
-                        <span>涨停次数:</span>
-                        <span class="pct-change">${stock.dates.length}次</span>
-                    </div>
-                    <div class="stock-info">
-                        <span>平均次日开盘:</span>
-                        <span class="pct-change ${pctClass}">${pctText}</span>
-                    </div>
-                    <div class="stock-info">
-                        <span>最近涨停:</span>
-                        <span class="pct-change">${lastDate || '--'}</span>
-                    </div>
-                `;
-
-                    card.onclick = () => selectStockFromLast20Days(stock.code, stock.name, lastDate, card);
-                    list.appendChild(card);
-                });
-            } catch (e) {
-                console.error('Error fetching last 20 days data:', e);
-            }
-        }
-
-        // New function to select stock from last 20 days data
-        function selectStockFromLast20Days(code, name, lastDate, element) {
-            currentStock = code;
-            currentDate = lastDate;
-
-            // Update UI
-            document.querySelectorAll('.stock-card').forEach(el => el.classList.remove('active'));
-            if (element) element.classList.add('active');
-
-            // Render chart for the last occurrence
-            renderChart(lastDate, code, name);
-        }
-
-        async function selectStock(code, name, element) {
-            currentStock = code;
-
-            // Update UI
-            document.querySelectorAll('.stock-card').forEach(el => el.classList.remove('active'));
-            if (element) element.classList.add('active');
-
-            // Render chart
-            await renderChart(currentDate, code, name);
-        }
-
-        async function renderChart(date, code, name) {
-            const panel = document.getElementById('chartPanel');
-            const isCompareMode = document.getElementById('compareModeToggle').checked;
-
-            // If not in compare mode, clear previous charts
-            if (!isCompareMode) {
-                // Dispose previous instances
-                chartInstances.forEach(c => c.dispose());
-                chartInstances = [];
-                panel.innerHTML = '';
-            } else {
-                // In compare mode, remove empty state if exists
-                const emptyState = panel.querySelector('.empty-state');
-                if (emptyState) emptyState.remove();
-            }
-
-            // Create container for new chart
-            const container = document.createElement('div');
-            container.className = 'chart-container';
-
-            // Close button for compare mode
+        // 渲染图表
+        function renderChart(data, code) {
+            const chartPanel = document.getElementById('chartPanel');
+            const chartContainer = document.createElement('div');
+            chartContainer.className = 'chart-container';
+            chartContainer.id = `chart-${code}`;
+            
+            // 添加关闭按钮
             const closeBtn = document.createElement('button');
             closeBtn.className = 'chart-close-btn';
-            closeBtn.innerHTML = '×';
-            closeBtn.onclick = () => {
-                container.remove();
-                // Remove from instances list (need to find it)
-                // Ideally we track instances better, but for now this is visual removal
-                // Memory leak is minor for this use case, but let's try to dispose
-                // We'll attach the instance to the container for easy disposal
-                if (container.chartInstance) {
-                    container.chartInstance.dispose();
-                }
+            closeBtn.textContent = '×';
+            closeBtn.addEventListener('click', () => closeChart(code));
+            chartContainer.appendChild(closeBtn);
+            
+            chartPanel.appendChild(chartContainer);
+            
+            // 初始化ECharts实例
+            const chartInstance = echarts.init(chartContainer);
+            chartInstances.push({ code, instance: chartInstance });
+            
+            // 准备K线数据
+            const dates = data.kline.map(item => item.date);
+            const klineData = data.kline.map(item => [item.open, item.close, item.low, item.high]);
+            
+            // 配置ECharts选项
+            const option = {
+                title: {
+                    text: `${code} K线图`,
+                    left: 'center',
+                    textStyle: {
+                        color: '#e0e0e0'
+                    }
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross'
+                    }
+                },
+                grid: {
+                    left: '10%',
+                    right: '10%',
+                    bottom: '15%'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: dates,
+                    axisLabel: {
+                        color: '#888',
+                        rotate: 45
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    scale: true,
+                    axisLabel: {
+                        color: '#888'
+                    },
+                    splitLine: {
+                        lineStyle: {
+                            color: '#444'
+                        }
+                    }
+                },
+                dataZoom: [
+                    {
+                        type: 'inside',
+                        start: 0,
+                        end: 100
+                    },
+                    {
+                        type: 'slider',
+                        bottom: '5%',
+                        start: 0,
+                        end: 100
+                    }
+                ],
+                series: [
+                    {
+                        type: 'candlestick',
+                        data: klineData,
+                        itemStyle: {
+                            color: '#ff4d4d',
+                            color0: '#00b894',
+                            borderColor: '#ff4d4d',
+                            borderColor0: '#00b894'
+                        }
+                    }
+                ]
             };
-            container.appendChild(closeBtn);
+            
+            chartInstance.setOption(option);
+            
+            // 监听dataZoom事件
+            chartInstance.on('dataZoom', function(params) {
+                const option = chartInstance.getOption();
+                const start = option.dataZoom[0].start;
+                const end = option.dataZoom[0].end;
+                
+                const currentTotalBars = dates.length;
+                const visiblePercent = end - start;
+                savedVisibleBarCount = Math.round(currentTotalBars * (visiblePercent / 100));
+                
+                if (savedVisibleBarCount < 5) savedVisibleBarCount = 5;
+            });
+        }
 
-            // Chart DOM
-            const chartDom = document.createElement('div');
-            chartDom.style.width = '100%';
-            chartDom.style.height = '100%';
-            container.appendChild(chartDom);
+        // 清空图表
+        function clearCharts() {
+            chartInstances.forEach(({ instance }) => {
+                instance.dispose();
+            });
+            chartInstances = [];
+            
+            const chartPanel = document.getElementById('chartPanel');
+            chartPanel.innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
+        }
 
-            // Prepend or Append? User usually wants to see the new one.
-            // Let's prepend so it appears at top.
-            panel.insertBefore(container, panel.firstChild);
-
-            try {
-                const response = await fetch(`/api/kline/${date}/${code}`);
-                const data = await response.json();
-
-                if (data.error) {
-                    chartDom.innerHTML = '<div class="empty-state">无法获取K线数据</div>';
-                    return;
+        // 关闭单个图表
+        function closeChart(code) {
+            const chartIndex = chartInstances.findIndex(item => item.code === code);
+            if (chartIndex !== -1) {
+                chartInstances[chartIndex].instance.dispose();
+                chartInstances.splice(chartIndex, 1);
+                
+                const chartContainer = document.getElementById(`chart-${code}`);
+                if (chartContainer) {
+                    chartContainer.remove();
                 }
-
-                const chartInstance = echarts.init(chartDom, 'dark');
-                container.chartInstance = chartInstance; // Attach for cleanup
-                chartInstances.push(chartInstance);
-
-                const dates = data.map(item => item.date);
-                const values = data.map(item => [item.open, item.close, item.low, item.high]);
-                const volumes = data.map((item, index) => [index, item.vol, item.open > item.close ? -1 : 1]);
-
-                // MA Data
-                const ma5 = data.map(item => item.ma5);
-                const ma10 = data.map(item => item.ma10);
-                const ma20 = data.map(item => item.ma20);
-
-                // Calculate Zoom Start/End based on savedVisibleBarCount
-                const totalBars = dates.length;
-                let startPercent = 0;
-                let endPercent = 100;
-
-                if (totalBars > savedVisibleBarCount) {
-                    startPercent = 100 - (savedVisibleBarCount / totalBars * 100);
+                
+                if (chartInstances.length === 0) {
+                    const chartPanel = document.getElementById('chartPanel');
+                    chartPanel.innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
                 }
-
-                // Ensure valid range
-                if (startPercent < 0) startPercent = 0;
-
-                // Find the index of the selected date to mark it
-                const selectedDateIndex = dates.indexOf(date);
-
-                const option = {
-                    backgroundColor: '#333',
-                    title: {
-                        text: `${name} (${code}) - ${date}`,
-                        left: 0
-                    },
-                    tooltip: {
-                        trigger: 'axis',
-                        axisPointer: {
-                            type: 'cross'
-                        }
-                    },
-                    legend: {
-                        data: ['日K', 'MA5', 'MA10', 'MA20', 'Volume'],
-                        top: 0,
-                        right: 50
-                    },
-                    grid: [
-                        {
-                            left: '5%',
-                            right: '5%',
-                            height: '55%'
-                        },
-                        {
-                            left: '5%',
-                            right: '5%',
-                            top: '70%',
-                            height: '15%'
-                        }
-                    ],
-                    xAxis: [
-                        {
-                            type: 'category',
-                            data: dates,
-                            scale: true,
-                            boundaryGap: false,
-                            axisLine: { onZero: false },
-                            splitLine: { show: false },
-                            splitNumber: 20,
-                            min: 'dataMin',
-                            max: 'dataMax'
-                        },
-                        {
-                            type: 'category',
-                            gridIndex: 1,
-                            data: dates,
-                            scale: true,
-                            boundaryGap: false,
-                            axisLine: { onZero: false },
-                            axisTick: { show: false },
-                            splitLine: { show: false },
-                            axisLabel: { show: false },
-                            min: 'dataMin',
-                            max: 'dataMax'
-                        }
-                    ],
-                    yAxis: [
-                        {
-                            scale: true,
-                            splitArea: {
-                                show: true
-                            }
-                        },
-                        {
-                            scale: true,
-                            gridIndex: 1,
-                            splitNumber: 2,
-                            axisLabel: { show: false },
-                            axisLine: { show: false },
-                            axisTick: { show: false },
-                            splitLine: { show: false }
-                        }
-                    ],
-                    dataZoom: [
-                        {
-                            type: 'inside',
-                            xAxisIndex: [0, 1],
-                            start: startPercent,
-                            end: endPercent
-                        },
-                        {
-                            show: true,
-                            xAxisIndex: [0, 1],
-                            type: 'slider',
-                            top: '90%',
-                            start: startPercent,
-                            end: endPercent
-                        }
-                    ],
-                    series: [
-                        {
-                            name: '日K',
-                            type: 'candlestick',
-                            data: values,
-                            itemStyle: {
-                                color: '#ef232a',
-                                color0: '#14b143',
-                                borderColor: '#ef232a',
-                                borderColor0: '#14b143'
-                            },
-                            markPoint: {
-                                data: [
-                                    {
-                                        name: '涨停日',
-                                        coord: [date, values[selectedDateIndex] ? values[selectedDateIndex][1] : 0],
-                                        value: '涨停',
-                                        itemStyle: { color: '#e6a23c' }
-                                    }
-                                ]
-                            },
-                            markLine: {
-                                symbol: ['none', 'none'],
-                                data: [
-                                    {
-                                        xAxis: selectedDateIndex,
-                                        label: { show: false },
-                                        lineStyle: { color: '#e6a23c', type: 'dashed' }
-                                    }
-                                ]
-                            }
-                        },
-                        {
-                            name: 'MA5',
-                            type: 'line',
-                            data: ma5,
-                            smooth: true,
-                            lineStyle: { opacity: 0.5, width: 1 }
-                        },
-                        {
-                            name: 'MA10',
-                            type: 'line',
-                            data: ma10,
-                            smooth: true,
-                            lineStyle: { opacity: 0.5, width: 1 }
-                        },
-                        {
-                            name: 'MA20',
-                            type: 'line',
-                            data: ma20,
-                            smooth: true,
-                            lineStyle: { opacity: 0.5, width: 1 }
-                        },
-                        {
-                            name: 'Volume',
-                            type: 'bar',
-                            xAxisIndex: 1,
-                            yAxisIndex: 1,
-                            data: volumes,
-                            itemStyle: {
-                                color: function (params) {
-                                    var colorList;
-                                    if (values[params.data[0]][1] > values[params.data[0]][0]) {
-                                        colorList = '#ef232a';
-                                    } else {
-                                        colorList = '#14b143';
-                                    }
-                                    return colorList;
-                                }
-                            }
-                        }
-                    ]
-                };
-
-                chartInstance.setOption(option);
-
-                // Listen to dataZoom events to update savedVisibleBarCount
-                chartInstance.on('dataZoom', function (params) {
-                    // ECharts dataZoom event can be triggered by slider or inside zoom
-                    // We need to get the current start/end from the option or model
-                    const option = chartInstance.getOption();
-                    const start = option.dataZoom[0].start;
-                    const end = option.dataZoom[0].end;
-
-                    // Calculate visible bars
-                    const currentTotalBars = dates.length;
-                    const visiblePercent = end - start;
-                    savedVisibleBarCount = Math.round(currentTotalBars * (visiblePercent / 100));
-
-                    // Enforce minimum
-                    if (savedVisibleBarCount < 5) savedVisibleBarCount = 5;
-                });
-
-            } catch (e) {
-                console.error('Error rendering chart:', e);
             }
         }
 
@@ -953,6 +716,8 @@
         document.addEventListener('DOMContentLoaded', function() {
             const updateButton = document.getElementById('updateButton');
             const updateStatus = document.getElementById('updateStatus');
+            const compareModeToggle = document.getElementById('compareModeToggle');
+            const last20DaysToggle = document.getElementById('last20DaysToggle');
 
             // 定期检查更新状态
             function checkUpdateStatus() {
@@ -993,7 +758,7 @@
                         updateStatus.textContent = '数据更新已开始...';
                         updateStatus.className = 'update-status running';
                         updateButton.disabled = true;
-                        // 定期检查更新状态
+                        
                         const interval = setInterval(() => {
                             fetch('/api/update/status')
                                 .then(response => response.json())
@@ -1001,10 +766,10 @@
                                     if (!statusData.is_running) {
                                         clearInterval(interval);
                                         updateButton.disabled = false;
+                                        
                                         if (statusData.last_status === 'success') {
                                             updateStatus.textContent = `更新成功: ${statusData.last_end_time}`;
                                             updateStatus.className = 'update-status success';
-                                            // 更新成功后重新加载日期列表
                                             loadDateList();
                                         } else {
                                             updateStatus.textContent = `更新失败: ${statusData.error}`;
@@ -1012,7 +777,7 @@
                                         }
                                     }
                                 });
-                        }, 3000); // 每3秒检查一次
+                        }, 3000);
                     } else {
                         updateStatus.textContent = data.message;
                         updateStatus.className = 'update-status error';
@@ -1025,13 +790,39 @@
                 });
             });
 
+            // 对比模式切换
+            compareModeToggle.addEventListener('change', function() {
+                isCompareMode = this.checked;
+                document.getElementById('chartPanel').classList.toggle('multi-mode', isCompareMode);
+                
+                if (!isCompareMode) {
+                    if (currentStock) {
+                        clearCharts();
+                        loadKLine(currentStock, currentDate);
+                    }
+                }
+            });
+
+            // 最近20日数据切换
+            last20DaysToggle.addEventListener('change', function() {
+                showLast20Days = this.checked;
+                if (currentStock) {
+                    if (!isCompareMode) {
+                        clearCharts();
+                    }
+                    loadKLine(currentStock, currentDate);
+                }
+            });
+
+            // 初始加载日期列表
+            loadDateList();
+            
             // 初始加载更新状态
             checkUpdateStatus();
+            
             // 每1分钟自动检查一次更新状态
             setInterval(checkUpdateStatus, 60000);
         });
     </script>
-
 </body>
-
 </html>
