@@ -17,6 +17,18 @@
             --border-color: #444;
         }
 
+        /* Light Mode */
+        :root.light-mode {
+            --bg-color: #ffffff;
+            --sidebar-bg: #f5f5f5;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --accent-color: #4a90e2;
+            --danger-color: #ff4d4d;
+            --success-color: #00b894;
+            --border-color: #ddd;
+        }
+
         body {
             margin: 0;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -141,6 +153,21 @@
         }
 
         .mobile-btn:hover {
+            background-color: #3a80d2;
+        }
+
+        .theme-toggle-btn {
+            padding: 8px 15px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        .theme-toggle-btn:hover {
             background-color: #3a80d2;
         }
 
@@ -382,20 +409,21 @@
         <div class="top-bar">
             <div id="currentDateTitle">请选择日期</div>
             <div class="controls">
-                <button id="updateButton" class="update-button">手动更新数据</button>
-                <span id="updateStatus"></span>
-                <button class="mobile-btn" onclick="window.location.href='/mobile'">手机版</button>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="compareModeToggle">
-                    <span class="toggle-slider"></span>
-                    <span>并列显示 (对比模式)</span>
-                </label>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="last20DaysToggle">
-                    <span class="toggle-slider"></span>
-                    <span>最近20日数据</span>
-                </label>
-            </div>
+            <button type="button" id="updateButton" class="update-button">手动更新数据</button>
+            <span id="updateStatus"></span>
+            <button type="button" class="mobile-btn" onclick="window.location.href='/mobile'">手机版</button>
+            <button type="button" class="theme-toggle-btn" id="themeToggle">切换亮色模式</button>
+            <label class="toggle-switch">
+                <input type="checkbox" id="compareModeToggle">
+                <span class="toggle-slider"></span>
+                <span>并列显示 (对比模式)</span>
+            </label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="last20DaysToggle">
+                <span class="toggle-slider"></span>
+                <span>最近20日数据</span>
+            </label>
+        </div>
         </div>
 
         <div class="content-area">
@@ -404,12 +432,11 @@
                     当日涨停股票 (<span id="stockCount">0</span>)
                 </div>
                 <div class="stock-list" id="stockList">
-                    <div class="empty-state" style="height: 200px;">请选择日期</div>
+                    <div class="empty-state">请选择日期</div>
                 </div>
             </div>
 
             <div class="chart-panel" id="chartPanel">
-                <div class="empty-state">请选择股票查看K线</div>
             </div>
         </div>
     </div>
@@ -558,7 +585,8 @@
                 clearCharts();
             }
             
-            const url = showLast20Days ? `/api/kline/${code}/last20days` : `/api/kline/${code}`;
+            // 使用正确的API路径格式：/api/kline/<date>/<code>
+            const url = `/api/kline/${date}/${code}`;
             
             fetch(url)
                 .then(response => response.json())
@@ -596,8 +624,15 @@
             chartInstances.push({ code, instance: chartInstance });
             
             // 准备K线数据
-            const dates = data.kline.map(item => item.date);
-            const klineData = data.kline.map(item => [item.open, item.close, item.low, item.high]);
+            let filteredData = data;
+            
+            // 如果选择了最近20天，只显示最近20天的数据
+            if (showLast20Days) {
+                filteredData = data.slice(-20);
+            }
+            
+            const dates = filteredData.map(item => item.date);
+            const klineData = filteredData.map(item => [item.open, item.close, item.low, item.high]);
             
             // 配置ECharts选项
             const option = {
@@ -642,13 +677,13 @@
                 dataZoom: [
                     {
                         type: 'inside',
-                        start: 0,
+                        start: dates.length > savedVisibleBarCount ? (100 - (savedVisibleBarCount / dates.length) * 100) : 0,
                         end: 100
                     },
                     {
                         type: 'slider',
                         bottom: '5%',
-                        start: 0,
+                        start: dates.length > savedVisibleBarCount ? (100 - (savedVisibleBarCount / dates.length) * 100) : 0,
                         end: 100
                     }
                 ],
@@ -690,7 +725,7 @@
             chartInstances = [];
             
             const chartPanel = document.getElementById('chartPanel');
-            chartPanel.innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
+            chartPanel.innerHTML = '';
         }
 
         // 关闭单个图表
@@ -707,7 +742,7 @@
                 
                 if (chartInstances.length === 0) {
                     const chartPanel = document.getElementById('chartPanel');
-                    chartPanel.innerHTML = '<div class="empty-state">请选择股票查看K线</div>';
+                    chartPanel.innerHTML = '';
                 }
             }
         }
@@ -822,6 +857,66 @@
             
             // 每1分钟自动检查一次更新状态
             setInterval(checkUpdateStatus, 60000);
+        });
+        
+        // 主题切换功能
+        const themeToggle = document.getElementById('themeToggle');
+        const root = document.documentElement;
+
+        // 更新图表颜色函数
+        function updateChartsColors() {
+            const isLightMode = root.classList.contains('light-mode');
+            
+            // 遍历所有图表实例并更新颜色
+            chartInstances.forEach(({ instance }) => {
+                if (instance) {
+                    instance.setOption({
+                        title: {
+                            textStyle: {
+                                color: isLightMode ? '#333333' : '#e0e0e0'
+                            }
+                        },
+                        xAxis: {
+                            axisLabel: {
+                                color: isLightMode ? '#666666' : '#888888'
+                            }
+                        },
+                        yAxis: {
+                            axisLabel: {
+                                color: isLightMode ? '#666666' : '#888888'
+                            },
+                            splitLine: {
+                                lineStyle: {
+                                    color: isLightMode ? '#dddddd' : '#444444'
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        
+        // 检查本地存储中的主题偏好
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            root.classList.add('light-mode');
+            themeToggle.textContent = '切换暗色模式';
+            // 页面加载时更新图表颜色
+            updateChartsColors();
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            if (root.classList.contains('light-mode')) {
+                root.classList.remove('light-mode');
+                themeToggle.textContent = '切换亮色模式';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                root.classList.add('light-mode');
+                themeToggle.textContent = '切换暗色模式';
+                localStorage.setItem('theme', 'light');
+            }
+            // 切换主题时更新图表颜色
+            updateChartsColors();
         });
     </script>
 </body>

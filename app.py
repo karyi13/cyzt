@@ -115,6 +115,9 @@ def get_stocks(date):
             't2_close_price': t2_close_price
         })
     
+    # 按照T+1开盘涨跌幅降序排序
+    stocks.sort(key=lambda x: x['t1_open_pct'] if x['t1_open_pct'] is not None else -float('inf'), reverse=True)
+    
     return jsonify(stocks)
 
 @app.route('/api/kline/<date>/<code>')

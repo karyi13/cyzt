@@ -13,11 +13,36 @@
             box-sizing: border-box;
         }
 
+        /* 暗色模式 */
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #2a2a2a;
+            --text-color: #ffffff;
+            --accent-color: #1890ff;
+            --border-color: #444;
+            --header-bg: #2a2a2a;
+        }
+
+        /* 亮色模式 */
+        :root.light-mode {
+            --bg-color: #ffffff;
+            --card-bg: #f5f5f5;
+            --text-color: #333333;
+            --accent-color: #1890ff;
+            --border-color: #ddd;
+            --header-bg: #ffffff;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #1a1a1a;
-            color: #ffffff;
+            background-color: var(--bg-color);
+            color: var(--text-color);
             overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         /* 顶部导航栏 */
@@ -27,13 +52,13 @@
             left: 0;
             right: 0;
             height: 50px;
-            background-color: #2a2a2a;
+            background-color: var(--header-bg);
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 15px;
             z-index: 1000;
-            border-bottom: 1px solid #444;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .top-nav h1 {
@@ -44,7 +69,7 @@
         .nav-btn {
             background: none;
             border: none;
-            color: #ffffff;
+            color: var(--text-color);
             font-size: 14px;
             cursor: pointer;
             padding: 5px 10px;
@@ -52,29 +77,30 @@
         }
 
         .nav-btn:hover {
-            background-color: #444;
+            background-color: var(--border-color);
         }
 
         /* 日期选择器 */
         .date-selector {
             margin-top: 50px;
             padding: 15px;
-            background-color: #2a2a2a;
+            background-color: var(--card-bg);
+            border-bottom: 1px solid var(--border-color);
         }
 
         .date-selector h3 {
             font-size: 14px;
             margin-bottom: 10px;
-            color: #cccccc;
+            color: var(--text-color);
         }
 
         .date-input {
             width: 100%;
             padding: 10px;
-            background-color: #333;
-            border: 1px solid #555;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
             border-radius: 4px;
-            color: #ffffff;
+            color: var(--text-color);
             font-size: 14px;
         }
 
@@ -86,6 +112,30 @@
         /* 股票列表 */
         .stock-list {
             padding: 15px;
+            max-height: calc(100vh - 350px); /* 调整最大高度以适应更多设备 */
+            overflow-y: scroll; /* 使用scroll确保滚动条始终可见 */
+            -webkit-overflow-scrolling: touch; /* 启用平滑滚动（iOS） */
+            scroll-behavior: smooth; /* 平滑滚动效果 */
+            flex: 1; /* 允许弹性布局 */
+            position: relative; /* 确保定位正确 */
+        }
+        
+        /* 自定义滚动条样式 */
+        .stock-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .stock-list::-webkit-scrollbar-track {
+            background: var(--card-bg);
+        }
+        
+        .stock-list::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
+        
+        .stock-list::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-color);
         }
 
         .list-header {
@@ -106,23 +156,23 @@
         }
 
         .stock-card {
-            background-color: #2a2a2a;
+            background-color: var(--card-bg);
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 10px;
             cursor: pointer;
-            border: 1px solid #444;
+            border: 1px solid var(--border-color);
             transition: all 0.2s ease;
         }
 
         .stock-card:hover {
-            background-color: #333;
-            border-color: #555;
+            background-color: var(--border-color);
+            border-color: var(--accent-color);
         }
 
         .stock-card.active {
-            border-color: #1890ff;
-            background-color: #2a2a40;
+            border-color: var(--accent-color);
+            background-color: var(--card-bg);
         }
 
         .stock-header {
@@ -150,7 +200,8 @@
         }
 
         .stock-info span:first-child {
-            color: #999;
+            color: var(--text-color);
+            opacity: 0.8;
         }
 
         .pct-change {
@@ -172,6 +223,7 @@
         /* 图表区域 */
         .chart-panel {
             padding: 15px;
+            background-color: var(--bg-color);
         }
 
         .chart-header {
@@ -180,6 +232,10 @@
             align-items: center;
             margin-bottom: 15px;
             font-size: 14px;
+            background-color: var(--header-bg);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .chart-header h2 {
@@ -191,7 +247,7 @@
             width: 100%;
             height: 300px;
             margin-bottom: 10px;
-            background-color: #2a2a2a;
+            background-color: var(--card-bg);
             border-radius: 8px;
             padding: 10px;
         }
@@ -202,7 +258,8 @@
             justify-content: center;
             align-items: center;
             height: 100px;
-            color: #999;
+            color: var(--text-color);
+            opacity: 0.7;
         }
 
         /* 空状态 */
@@ -211,7 +268,8 @@
             justify-content: center;
             align-items: center;
             height: 200px;
-            color: #999;
+            color: var(--text-color);
+            opacity: 0.7;
             font-size: 14px;
         }
 
@@ -219,8 +277,26 @@
         .footer {
             text-align: center;
             padding: 20px;
-            color: #666;
+            color: var(--text-color);
             font-size: 12px;
+            background-color: var(--header-bg);
+            border-top: 1px solid var(--border-color);
+        }
+        
+        /* 主题切换按钮 */
+        .theme-toggle-btn {
+            padding: 5px 10px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+
+        .theme-toggle-btn:hover {
+            background-color: #3a80d2;
         }
     </style>
 </head>
@@ -228,7 +304,10 @@
     <!-- 顶部导航栏 -->
     <div class="top-nav">
         <h1>创业板涨停数据</h1>
-        <button class="nav-btn" onclick="switchToDesktop()">电脑版</button>
+        <div style="display: flex; gap: 10px;">
+            <button class="nav-btn" onclick="switchToDesktop()">电脑版</button>
+            <button class="theme-toggle-btn" id="themeToggle">切换亮色模式</button>
+        </div>
     </div>
 
     <!-- 日期选择器 -->
@@ -264,9 +343,33 @@
         let currentDate = '';
         let currentStock = '';
         let chartInstance = null;
+        let currentDataZoom = {start: 50, end: 100}; // 保存当前的dataZoom设置
 
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', function() {
+            // 主题切换功能
+            const themeToggle = document.getElementById('themeToggle');
+            const root = document.documentElement;
+            
+            // 检查本地存储中的主题偏好
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'light') {
+                root.classList.add('light-mode');
+                themeToggle.textContent = '切换暗色模式';
+            }
+            
+            themeToggle.addEventListener('click', () => {
+                if (root.classList.contains('light-mode')) {
+                    root.classList.remove('light-mode');
+                    themeToggle.textContent = '切换亮色模式';
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    root.classList.add('light-mode');
+                    themeToggle.textContent = '切换暗色模式';
+                    localStorage.setItem('theme', 'light');
+                }
+            });
+            
             initApp();
         });
 
@@ -466,9 +569,10 @@
                     yAxis: [
                         {
                             scale: true,
-                            splitArea: {show: true},
+                            splitArea: {show: false},
+                            splitLine: {show: false},
                             axisLabel: {
-                                color: '#ffffff'
+                                color: document.documentElement.classList.contains('light-mode') ? '#333333' : '#ffffff'
                             }
                         },
                         {
@@ -485,16 +589,16 @@
                         {
                             type: 'inside',
                             xAxisIndex: [0, 1],
-                            start: 50,
-                            end: 100
+                            start: currentDataZoom.start,
+                            end: currentDataZoom.end
                         },
                         {
                             show: true,
                             xAxisIndex: [0, 1],
                             type: 'slider',
                             bottom: '5%',
-                            start: 50,
-                            end: 100
+                            start: currentDataZoom.start,
+                            end: currentDataZoom.end
                         }
                     ],
                     series: [
@@ -528,6 +632,19 @@
                 };
 
                 chartInstance.setOption(option);
+                
+                // 添加dataZoom事件监听器，保存当前设置
+                chartInstance.on('dataZoom', function(params) {
+                    if (params.batch) {
+                        // 批量更新时使用最后一个参数的设置
+                        const lastParam = params.batch[params.batch.length - 1];
+                        currentDataZoom.start = lastParam.start;
+                        currentDataZoom.end = lastParam.end;
+                    } else {
+                        currentDataZoom.start = params.start;
+                        currentDataZoom.end = params.end;
+                    }
+                });
             } catch (e) {
                 console.error('Error rendering chart:', e);
                 chartInstance.setOption({
@@ -555,6 +672,51 @@
         function switchToDesktop() {
             window.location.href = '/';
         }
+        
+        // 主题切换功能
+        const themeToggle = document.getElementById('themeToggle');
+        const root = document.documentElement;
+        
+        // 更新图表颜色函数
+        function updateChartColors() {
+            const isLightMode = root.classList.contains('light-mode');
+            const textColor = isLightMode ? '#333333' : '#ffffff';
+            
+            // 更新图表的Y轴标签颜色
+            if (chartInstance) {
+                chartInstance.setOption({
+                    yAxis: {
+                        axisLabel: {
+                            color: textColor
+                        }
+                    }
+                });
+            }
+        }
+        
+        // 检查本地存储中的主题偏好
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            root.classList.add('light-mode');
+            themeToggle.textContent = '切换暗色模式';
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            if (root.classList.contains('light-mode')) {
+                root.classList.remove('light-mode');
+                themeToggle.textContent = '切换亮色模式';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                root.classList.add('light-mode');
+                themeToggle.textContent = '切换暗色模式';
+                localStorage.setItem('theme', 'light');
+            }
+            // 更新图表颜色
+            updateChartColors();
+        });
+        
+        // 页面加载时更新图表颜色
+        window.addEventListener('load', updateChartColors);
     </script>
 </body>
 </html>
