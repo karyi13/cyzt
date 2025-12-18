@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 import pandas as pd
 import os
 import glob
@@ -39,6 +39,20 @@ def index():
 @app.route('/mobile')
 def mobile():
     return render_template('mobile.html')
+
+@app.route('/stock_analysis_enhanced_v2.html')
+def stock_analysis_enhanced():
+    return render_template('stock_analysis_enhanced_v2.html')
+
+@app.route('/trade_with_cangwei.csv')
+def get_trade_csv():
+    """Serve the trade_with_cangwei.csv file."""
+    return send_from_directory('templates', 'trade_with_cangwei.csv', mimetype='text/csv')
+
+@app.route('/data/kline_cache/<path:filename>')
+def serve_kline_cache(filename):
+    """Serve K-line cache CSV files."""
+    return send_from_directory(KLINE_CACHE_DIR, filename, mimetype='text/csv')
 
 @app.route('/api/dates')
 def get_dates():

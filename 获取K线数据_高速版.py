@@ -24,6 +24,8 @@ import socket
 import logging
 from collections import deque
 import sys
+import numpy as np
+from pathlib import Path
 warnings.filterwarnings("ignore")
 
 # 设置日志配置
@@ -64,8 +66,14 @@ end_date   = datetime.datetime.now().strftime('%Y-%m-%d')
 base_data_dir  = './data'
 data_dir       = base_data_dir
 kline_cache_dir = os.path.join(base_data_dir, 'kline_cache')
+templates_dir = './templates'  # 模板目录，用于存放结果文件
 os.makedirs(data_dir, exist_ok=True)
 os.makedirs(kline_cache_dir, exist_ok=True)
+os.makedirs(templates_dir, exist_ok=True)
+
+# 结果文件名
+trade_results_filename = 'trade_results.csv'
+trade_with_cangwei_filename = 'trade_with_cangwei.csv'
 
 RETRY_COUNT = 10
 RETRY_DELAY = 8
@@ -687,12 +695,234 @@ print("\n--- 所有任务已完成 ---")
    
 # 测试函数已移除
 
+# ---------- 涨停表现分析函数 ----------
+def analyze_trade_performance():
+    """
+    分析涨停后的交易表现，生成交易结果
+    """
+    print("\n--- 开始分析涨停后表现 ---")
+    
+    # 检查kline_cache_dir是否存在
+    if not os.path.isdir(kline_cache_dir):
+        print(f"错误：kline_cache_dir '{kline_cache_dir}' 不存在。")
+        return False
+    
+    # 读取所有CSV文件到pandas DataFrames
+    kline_files = list(Path(kline_cache_dir).glob("*.csv"))
+    
+    if not kline_files:
+        print(f"在目录 '{kline_cache_dir}' 中没有找到任何CSV文件。")
+        return False
+    
+    all_stock_data = {}
+    for file_path in kline_files:
+        file_name = file_path.stem  # 获取文件名（不含扩展名）
+        try:
+            df = pd.read_csv(file_path)
+            if not df.empty:  # 只添加非空数据
+                all_stock_data[file_name] = df
+        except Exception as e:
+            print(f"读取文件 {file_path} 失败: {e}。跳过此文件。")
+    
+    if not all_stock_data:
+        print("没有成功读取任何股票数据。")
+        return False
+    
+    # 处理数据并计算交易结果
+    trade_results = []
+    
+    for file_name, df in all_stock_data.items():
+        parts = file_name.split("_")
+        if len(parts) < 2:
+            print(f"文件名格式不正确，跳过文件: {file_name}。期望格式为 'YYYY-MM-DD_股票代码.csv'。")
+            continue
+        
+        date_str = parts[0]
+        stock_code = parts[1].split(".")[0]  # 去除可能的后缀，如.SZ
+        
+        if '日期' not in df.columns:
+            print(f"股票代码: {stock_code}, 涨停日期: {date_str}: 数据中没有找到 '日期' 列，跳过处理。")
+            continue
+        
+        df['日期'] = pd.to_datetime(df['日期'])
+        try:
+            trade_date = pd.to_datetime(date_str)
+        except ValueError:
+            print(f"文件名中的日期格式不正确，跳过文件: {file_name}。")
+            continue
+        
+        # 查找涨停日期在DataFrame中的索引
+        if trade_date in df['日期'].values:
+            trade_date_index = df[df['日期'] == trade_date].index[0]
+            buy_date_index = trade_date_index + 1  # 买入日期是涨停日期的下一个交易日
+            sell_date_index = buy_date_index + 1   # 卖出日期是买入日期的下一个交易日
+        
+            # 检查是否有足够的后续交易日数据
+            if sell_date_index < len(df):
+                buy_price = df.loc[buy_date_index, '开盘']
+                sell_price = df.loc[sell_date_index, '收盘']
+                profit_loss = sell_price - buy_price
+        
+                # 计算买入日期和卖出日期的涨跌幅
+                buy_date_open_change = None
+                buy_date_close_change = None
+                sell_date_open_change = None
+                sell_date_close_change = None
+        
+                if trade_date_index >= 0:
+                    prev_close_price_buy = df.loc[trade_date_index, '收盘']
+                    if prev_close_price_buy != 0:
+                        buy_date_open_change = ((df.loc[buy_date_index, '开盘'] - prev_close_price_buy) / prev_close_price_buy) * 100
+                        buy_date_close_change = ((df.loc[buy_date_index, '收盘'] - prev_close_price_buy) / prev_close_price_buy) * 100
+        
+                if buy_date_index >= 0 and buy_date_index < len(df):
+                    prev_close_price_sell = df.loc[buy_date_index, '收盘']
+                    if prev_close_price_sell != 0:
+                        sell_date_open_change = ((df.loc[sell_date_index, '开盘'] - prev_close_price_sell) / prev_close_price_sell) * 100
+                        sell_date_close_change = ((df.loc[sell_date_index, '收盘'] - prev_close_price_sell) / prev_close_price_sell) * 100
+        
+                trade_results.append({
+                    '涨停日期': trade_date.date(),
+                    '股票代码': stock_code,
+                    '买入价': buy_price,
+                    '卖出价': sell_price,
+                    '盈亏': profit_loss,
+                    '买入日期开盘涨跌幅': buy_date_open_change,
+                    '买入日期收盘涨跌幅': buy_date_close_change,
+                    '卖出日期开盘涨跌幅': sell_date_open_change,
+                    '卖出日期收盘涨跌幅': sell_date_close_change
+                })
+    
+    # 创建DataFrame并计算 '盈亏比例'
+    if trade_results:
+        trade_df = pd.DataFrame(trade_results)
+        
+        # 计算 '盈亏比例'
+        trade_df['盈亏比例'] = trade_df.apply(
+            lambda row: ((row['卖出价'] - row['买入价']) / row['买入价']) * 100 if row['买入价'] != 0 else 0, 
+            axis=1
+        )
+        
+        # 保存到CSV文件（保存到templates文件夹）
+        output_csv_path = os.path.join(templates_dir, trade_results_filename)
+        try:
+            trade_df.to_csv(output_csv_path, index=False, encoding='utf-8-sig')
+            print(f"\n交易结果已保存到：{output_csv_path}")
+            print(f"共生成 {len(trade_df)} 条交易记录")
+            return True
+        except Exception as e:
+            print(f"保存CSV文件失败: {e}")
+            return False
+    else:
+        print("没有生成任何交易结果数据。")
+        return False
+
+# ---------- 仓位建议计算函数 ----------
+def calculate_position_suggestions():
+    """
+    计算仓位建议
+    """
+    print("\n--- 开始计算仓位建议 ---")
+    
+    # 读取交易结果文件（从templates文件夹读取）
+    input_file_path = os.path.join(templates_dir, trade_results_filename)
+    
+    if not os.path.exists(input_file_path):
+        print(f"错误：输入文件 '{input_file_path}' 不存在")
+        return False
+    
+    df = pd.read_csv(input_file_path)
+    print(f"CSV文件 '{input_file_path}' 读取成功，共 {len(df)} 条记录。")
+    
+    # Calculate the total count of trades for each '涨停日期'
+    df['总数'] = df.groupby('涨停日期')['涨停日期'].transform('count')
+    
+    # Calculate the rank based on '买入日期开盘涨跌幅' within each '涨停日期' group
+    df['排名'] = df.groupby('涨停日期')['买入日期开盘涨跌幅'].rank(ascending=False).astype(int)
+    
+    # Determine the minimum and maximum values of '买入日期开盘涨跌幅'
+    min_change = df['买入日期开盘涨跌幅'].min()
+    max_change = df['买入日期开盘涨跌幅'].max()
+    
+    # Define the bins for the intervals with a step of 1
+    bins = np.arange(int(min_change), int(max_change) + 2, 1)
+    
+    # Create a new column for the '买入日期开盘涨跌幅' intervals
+    df['涨跌幅区间'] = pd.cut(df['买入日期开盘涨跌幅'], bins=bins, right=False, include_lowest=True)
+    
+    # Group by '排名' and '涨跌幅区间' and calculate metrics
+    grouped_df = df.groupby(['排名', '涨跌幅区间'], observed=True).agg(
+        盈利数量=('盈亏比例', lambda x: (x > 0).sum()),
+        平均盈利=('盈亏比例', lambda x: x[x > 0].mean()),
+        亏损数量=('盈亏比例', lambda x: (x < 0).sum()),
+        平均亏损=('盈亏比例', lambda x: x[x < 0].mean()),
+        总交易数=('盈亏比例', 'count')
+    ).reset_index()
+    
+    # Calculate Win Rate and Loss Rate
+    grouped_df['胜率'] = grouped_df['盈利数量'] / grouped_df['总交易数']
+    grouped_df['亏损率'] = grouped_df['亏损数量'] / grouped_df['总交易数']
+    
+    # Handle cases where there are no winning or losing trades
+    grouped_df['平均盈利'] = grouped_df['平均盈利'].replace([np.inf, -np.inf], np.nan).fillna(0)
+    grouped_df['平均亏损'] = grouped_df['平均亏损'].replace([np.inf, -np.inf], np.nan).fillna(0)
+    
+    # Calculate the Win/Loss Ratio
+    grouped_df['盈亏比'] = np.where(
+        grouped_df['平均亏损'] != 0, 
+        abs(grouped_df['平均盈利'] / grouped_df['平均亏损']), 
+        np.nan
+    )
+    
+    # Calculate Kelly Percentage
+    grouped_df['凯莉公式仓位'] = np.where(
+        (grouped_df['盈亏比'].notna()) & (grouped_df['胜率'].notna()),
+        grouped_df['胜率'] - (1 - grouped_df['胜率']) / grouped_df['盈亏比'],
+        np.nan
+    )
+    
+    # Filter out rows where '总交易数' is 0
+    filtered_grouped_df = grouped_df[grouped_df['总交易数'] != 0].copy()
+    
+    # Merge the original df with the filtered_grouped_df
+    merged_df = pd.merge(
+        df, 
+        filtered_grouped_df[['排名', '涨跌幅区间', '凯莉公式仓位', '胜率']],
+        on=['排名', '涨跌幅区间'],
+        how='left'
+    )
+    
+    # Define a function to calculate the position size
+    def calculate_position_size(row):
+        """Calculates the position size based on Kelly Criterion and Win Rate."""
+        kelly_position = row['凯莉公式仓位']
+        win_rate = row['胜率']
+    
+        if pd.isna(kelly_position) or kelly_position < 0:
+            return 0
+        elif win_rate == 1:
+            return 0.7
+        else:
+            return kelly_position
+    
+    # Apply the function to create the '仓位' column
+    merged_df['仓位'] = merged_df.apply(calculate_position_size, axis=1)
+    
+    # Save the merged_df to CSV（保存到templates文件夹）
+    output_csv_path = os.path.join(templates_dir, trade_with_cangwei_filename)
+    merged_df.to_csv(output_csv_path, index=False, encoding='utf-8-sig')
+    print(f"\n仓位建议已保存到: {output_csv_path}")
+    print(f"共处理 {len(merged_df)} 条记录")
+    
+    return True
+
 # 主程序
 def main():
     """主函数"""
-    print("=== K线数据获取程序启动 ===")
+    print("=== K线数据获取及分析程序启动 ===")
     
-    # 正常运行模式
+    # 步骤1: 获取K线数据
+    print("\n【步骤1】获取K线数据")
     if not final_filtered_df.empty:
         process_stock_batch(final_filtered_df, kline_cache_dir)
     else:
@@ -704,6 +934,21 @@ def main():
         logger.info("连接池已关闭")
     except Exception as e:
         logger.error(f"关闭连接池时出错: {str(e)}")
+    
+    # 步骤2: 分析涨停后表现
+    print("\n【步骤2】分析涨停后表现")
+    if not analyze_trade_performance():
+        print("警告：涨停表现分析失败")
+    
+    # 步骤3: 计算仓位建议
+    print("\n【步骤3】计算仓位建议")
+    if not calculate_position_suggestions():
+        print("警告：仓位建议计算失败")
+    
+    print("\n=== 所有任务已完成 ===")
+    print(f"最终结果文件:")
+    print(f"  - 交易结果: {os.path.join(templates_dir, trade_results_filename)}")
+    print(f"  - 仓位建议: {os.path.join(templates_dir, trade_with_cangwei_filename)}")
 
 if __name__ == "__main__":
     main()
