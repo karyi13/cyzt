@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, render_template, request, send_from_directory
-import pandas as pd
 import os
 import glob
+import csv
 import json
 import subprocess
 import threading
@@ -15,9 +15,15 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 KLINE_CACHE_DIR = os.path.join(DATA_DIR, 'kline_cache')
 
-# Ensure data directories exist
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(KLINE_CACHE_DIR, exist_ok=True)
+# In a serverless environment, we may not have persistent storage
+# So check if directories exist before creating them
+if not os.environ.get('VERCEL'):
+    # Only create directories during local development
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(KLINE_CACHE_DIR, exist_ok=True)
+else:
+    # In Vercel environment, we'll check if directories exist at runtime
+    pass  # Vercel will have directories created if files are deployed
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -57,13 +63,17 @@ def serve_kline_cache(filename):
 @app.route('/api/dates')
 def get_dates():
     """Get list of available dates from limit-up files."""
+    # Check if data directory exists
+    if not os.path.exists(DATA_DIR):
+        return jsonify([])  # Return empty list if no data directory
+
     files = glob.glob(os.path.join(DATA_DIR, '*_创业板涨停.csv'))
     dates = []
     for f in files:
         basename = os.path.basename(f)
         date_str = basename.split('_')[0]
         dates.append(date_str)
-    
+
     # Sort dates descending
     dates.sort(reverse=True)
     return jsonify(dates)
@@ -71,104 +81,140 @@ def get_dates():
 @app.route('/api/stocks/<date>')
 def get_stocks(date):
     """Get stocks for a specific date with T+1 open performance."""
+    # Check if data directory exists
+    if not os.path.exists(DATA_DIR):
+        return jsonify({'error': 'Data directory not found'}), 404
+
     file_path = os.path.join(DATA_DIR, f'{date}_创业板涨停.csv')
     if not os.path.exists(file_path):
         return jsonify({'error': 'Date not found'}), 404
-    
+
+    stocks = []
+
     try:
-        df = pd.read_csv(file_path)
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+
+        for row in rows:
+            stock_code = str(row['股票代码'])
+            stock_name = row['股票简称']
+
+            # Calculate T+1 Open Performance
+            kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{stock_code}.SZ.csv')
+            t1_open_pct = None
+
+            if os.path.exists(kline_file):
+                try:
+                    # Read the K-line file and find the date
+                    with open(kline_file, 'r', encoding='utf-8') as kf:
+                        kline_reader = csv.DictReader(kf)
+                        kline_rows = list(kline_reader)
+
+                    # Find index of the date
+                    matched_idx = -1
+                    for idx, k_row in enumerate(kline_rows):
+                        if k_row['日期'] == date:
+                            matched_idx = idx
+                            break
+
+                    if matched_idx != -1:
+                        # Check if T+1 exists
+                        if matched_idx + 1 < len(kline_rows):
+                            t_close = float(kline_rows[matched_idx]['收盘'])
+                            t1_open = float(kline_rows[matched_idx+1]['开盘'])
+                            t1_close = float(kline_rows[matched_idx+1]['收盘'])
+
+                            if t_close != 0:
+                                t1_open_pct = (t1_open - t_close) / t_close * 100
+                                t1_open_pct = round(t1_open_pct, 2)
+
+                        # Check if T+2 exists for profit calculation
+                        t1_open_price = None
+                        t2_close_price = None
+                        if matched_idx + 1 < len(kline_rows):
+                            t1_open_price = float(kline_rows[matched_idx+1]['开盘'])
+                        if matched_idx + 2 < len(kline_rows):
+                            t2_close_price = float(kline_rows[matched_idx+2]['收盘'])
+                except Exception as e:
+                    print(f"Error calculating T+1 for {stock_code}: {e}")
+
+            stocks.append({
+                'code': stock_code,
+                'name': stock_name,
+                't1_open_pct': t1_open_pct,
+                't1_open_price': t1_open_price,
+                't2_close_price': t2_close_price
+            })
+
+        # 按照T+1开盘涨跌幅降序排序
+        stocks.sort(key=lambda x: x['t1_open_pct'] if x['t1_open_pct'] is not None else -float('inf'), reverse=True)
+
+        return jsonify(stocks)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
-    stocks = []
-    for _, row in df.iterrows():
-        stock_code = str(row['股票代码'])
-        stock_name = row['股票简称']
-        
-        # Calculate T+1 Open Performance
-        kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{stock_code}.SZ.csv')
-        t1_open_pct = None
-        
-        if os.path.exists(kline_file):
-            try:
-                kline_df = pd.read_csv(kline_file)
-                # Find row for Date T
-                # Ensure '日期' column is string for comparison
-                kline_df['日期'] = kline_df['日期'].astype(str)
-                
-                # Find index of the date
-                matches = kline_df.index[kline_df['日期'] == date].tolist()
-                
-                if matches:
-                    idx = matches[0]
-                    # Check if T+1 exists
-                    if idx + 1 < len(kline_df):
-                        t_close = kline_df.iloc[idx]['收盘']
-                        t1_open = kline_df.iloc[idx+1]['开盘']
-                        t1_close = kline_df.iloc[idx+1]['收盘']
-                        
-                        if t_close != 0:
-                            t1_open_pct = (t1_open - t_close) / t_close * 100
-                            t1_open_pct = round(t1_open_pct, 2)
-                    
-                    # Check if T+2 exists for profit calculation
-                    t1_open_price = None
-                    t2_close_price = None
-                    if idx + 1 < len(kline_df):
-                        t1_open_price = kline_df.iloc[idx+1]['开盘']
-                    if idx + 2 < len(kline_df):
-                        t2_close_price = kline_df.iloc[idx+2]['收盘']
-            except Exception as e:
-                print(f"Error calculating T+1 for {stock_code}: {e}")
-        
-        stocks.append({
-            'code': stock_code,
-            'name': stock_name,
-            't1_open_pct': t1_open_pct,
-            't1_open_price': t1_open_price,
-            't2_close_price': t2_close_price
-        })
-    
-    # 按照T+1开盘涨跌幅降序排序
-    stocks.sort(key=lambda x: x['t1_open_pct'] if x['t1_open_pct'] is not None else -float('inf'), reverse=True)
-    
-    return jsonify(stocks)
 
 @app.route('/api/kline/<date>/<code>')
 def get_kline(date, code):
     """Get K-line data for a specific stock."""
+    # Check if kline cache directory exists
+    if not os.path.exists(KLINE_CACHE_DIR):
+        return jsonify({'error': 'K-line cache directory not found'}), 404
+
     kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{code}.SZ.csv')
     if not os.path.exists(kline_file):
         return jsonify({'error': 'K-line data not found'}), 404
-    
+
     try:
-        df = pd.read_csv(kline_file)
-        
-        # Ensure data is sorted by date
-        if '日期' in df.columns:
-            df = df.sort_values('日期')
-        
-        # Calculate Moving Averages
-        df['MA5'] = df['收盘'].rolling(window=5).mean()
-        df['MA10'] = df['收盘'].rolling(window=10).mean()
-        df['MA20'] = df['收盘'].rolling(window=20).mean()
-        
-        # Fill NaN with None (null in JSON) for ECharts
-        df = df.where(pd.notnull(df), None)
+        with open(kline_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+
+        # Sort data by date if '日期' column exists
+        if '日期' in reader.fieldnames:
+            rows.sort(key=lambda x: x['日期'])  # Sorting by date string
+
+        # Calculate Moving Averages - this requires a bit more work without pandas
+        for i, row in enumerate(rows):
+            # Convert values to float for calculation
+            row['收盘'] = float(row['收盘'])
+
+        # Calculate moving averages - simplified implementation
+        for i, row in enumerate(rows):
+            # Calculate MA5 for current position
+            if i >= 4:
+                ma5_sum = sum(float(r['收盘']) for r in rows[i-4:i+1])
+                row['MA5'] = ma5_sum / 5
+            else:
+                row['MA5'] = None
+
+            # Calculate MA10 for current position
+            if i >= 9:
+                ma10_sum = sum(float(r['收盘']) for r in rows[i-9:i+1])
+                row['MA10'] = ma10_sum / 10
+            else:
+                row['MA10'] = None
+
+            # Calculate MA20 for current position
+            if i >= 19:
+                ma20_sum = sum(float(r['收盘']) for r in rows[i-19:i+1])
+                row['MA20'] = ma20_sum / 20
+            else:
+                row['MA20'] = None
 
         # Format for ECharts
         data = []
-        for _, row in df.iterrows():
+        for row in rows:
             data.append({
                 'date': str(row['日期']),
-                'open': row['开盘'],
-                'close': row['收盘'],
-                'low': row['最低'],
-                'high': row['最高'],
-                'vol': row['成交量'],
-                'ma5': row['MA5'] if pd.notnull(row['MA5']) else None,
-                'ma10': row['MA10'] if pd.notnull(row['MA10']) else None,
-                'ma20': row['MA20'] if pd.notnull(row['MA20']) else None
+                'open': float(row['开盘']) if row['开盘'] else None,
+                'close': row['收盘'],  # Already converted to float above
+                'low': float(row['最低']) if row['最低'] else None,
+                'high': float(row['最高']) if row['最高'] else None,
+                'vol': int(float(row['成交量'])) if row['成交量'] else None,
+                'ma5': row['MA5'],
+                'ma10': row['MA10'],
+                'ma20': row['MA20']
             })
         return jsonify(data)
     except Exception as e:
@@ -182,9 +228,19 @@ def run_data_update_script():
     update_status['last_start_time'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     update_status['last_status'] = 'running'
     update_status['error'] = None
-    
+
+    # Only run this in development, not on Vercel
+    # On Vercel, data should be pre-populated or updated through a different mechanism
+    if os.environ.get('VERCEL'):
+        update_status['last_status'] = 'skipped'
+        update_status['error'] = 'Data update skipped on Vercel deployment'
+        logger.info("Skipping data update on Vercel")
+        update_status['is_running'] = False
+        update_status['last_end_time'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        return
+
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '获取K线数据_高速版.py')
-    
+
     try:
         logger.info(f"Starting data update script: {script_path}")
         # Run the script in a separate process
@@ -194,7 +250,7 @@ def run_data_update_script():
             text=True,
             timeout=3600  # 1 hour timeout
         )
-        
+
         if result.returncode == 0:
             update_status['last_status'] = 'success'
             logger.info("Data update completed successfully")
@@ -202,7 +258,7 @@ def run_data_update_script():
             update_status['last_status'] = 'failed'
             update_status['error'] = result.stderr
             logger.error(f"Data update failed: {result.stderr}")
-            
+
     except subprocess.TimeoutExpired:
         update_status['last_status'] = 'timeout'
         update_status['error'] = 'Script execution timed out after 1 hour'
@@ -218,13 +274,18 @@ def run_data_update_script():
 
 def background_update_thread():
     """Background thread to run data update periodically."""
+    # Don't run background updates on Vercel
+    if os.environ.get('VERCEL'):
+        logger.info("Background updates disabled on Vercel")
+        return
+
     while True:
         # Check if market is closed (run after 15:30 on trading days)
         now = datetime.datetime.now()
         weekday = now.weekday()
         hour = now.hour
         minute = now.minute
-        
+
         # Only run on weekdays after market close (15:30)
         if weekday < 5 and hour >= 15 and minute >= 30:
             if not update_status['is_running']:
@@ -234,7 +295,7 @@ def background_update_thread():
                 time.sleep(86400)
             else:
                 logger.info("Update already running, skipping scheduled run")
-        
+
         # Sleep for 1 hour before checking again
         time.sleep(3600)
 
@@ -267,6 +328,10 @@ def get_update_status():
 @app.route('/api/last20days')
 def get_last_20_days_data():
     """Get stocks from the last 20 trading days with their performance."""
+    # Check if data directory exists
+    if not os.path.exists(DATA_DIR):
+        return jsonify({'error': 'Data directory not found'}), 404
+
     try:
         # Get all available dates sorted in descending order
         files = glob.glob(os.path.join(DATA_DIR, '*_创业板涨停.csv'))
@@ -275,51 +340,59 @@ def get_last_20_days_data():
             basename = os.path.basename(f)
             date_str = basename.split('_')[0]
             dates.append(date_str)
-        
+
         # Sort dates descending and take the first 20
         dates.sort(reverse=True)
         last_20_dates = dates[:20]
-        
+
         # Collect all stocks from these dates
         all_stocks = {}
-        
+
         for date in last_20_dates:
             file_path = os.path.join(DATA_DIR, f'{date}_创业板涨停.csv')
             if not os.path.exists(file_path):
                 continue
-            
+
             try:
-                df = pd.read_csv(file_path)
-                for _, row in df.iterrows():
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    rows = list(reader)
+
+                for row in rows:
                     stock_code = str(row['股票代码'])
                     stock_name = row['股票简称']
-                    
+
                     # Calculate T+1 Open Performance
                     kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{stock_code}.SZ.csv')
                     t1_open_pct = None
-                    
+
                     if os.path.exists(kline_file):
                         try:
-                            kline_df = pd.read_csv(kline_file)
-                            kline_df['日期'] = kline_df['日期'].astype(str)
-                            
+                            # Read the K-line file
+                            with open(kline_file, 'r', encoding='utf-8') as kf:
+                                kline_reader = csv.DictReader(kf)
+                                kline_rows = list(kline_reader)
+
                             # Find index of the date
-                            matches = kline_df.index[kline_df['日期'] == date].tolist()
-                            
-                            if matches:
-                                idx = matches[0]
+                            matched_idx = -1
+                            for idx, k_row in enumerate(kline_rows):
+                                if k_row['日期'] == date:
+                                    matched_idx = idx
+                                    break
+
+                            if matched_idx != -1:
                                 # Check if T+1 exists
-                                if idx + 1 < len(kline_df):
-                                    t_close = kline_df.iloc[idx]['收盘']
-                                    t1_open = kline_df.iloc[idx+1]['开盘']
-                                    t1_close = kline_df.iloc[idx+1]['收盘']
-                                    
+                                if matched_idx + 1 < len(kline_rows):
+                                    t_close = float(kline_rows[matched_idx]['收盘'])
+                                    t1_open = float(kline_rows[matched_idx+1]['开盘'])
+                                    t1_close = float(kline_rows[matched_idx+1]['收盘'])
+
                                     if t_close != 0:
                                         t1_open_pct = (t1_open - t_close) / t_close * 100
                                         t1_open_pct = round(t1_open_pct, 2)
                         except Exception as e:
                             print(f"Error calculating T+1 for {stock_code} on {date}: {e}")
-                    
+
                     # Store stock data
                     if stock_code not in all_stocks:
                         all_stocks[stock_code] = {
@@ -327,30 +400,43 @@ def get_last_20_days_data():
                             'name': stock_name,
                             'dates': []
                         }
-                    
+
                     all_stocks[stock_code]['dates'].append({
                         'date': date,
                         't1_open_pct': t1_open_pct
                     })
             except Exception as e:
                 print(f"Error reading data for {date}: {e}")
-        
+
         # Convert to list and sort by total occurrences
         result = list(all_stocks.values())
         result.sort(key=lambda x: len(x['dates']), reverse=True)
-        
+
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
-    # Start background update thread
-    update_thread = threading.Thread(target=background_update_thread)
-    update_thread.daemon = True
-    update_thread.start()
-    
-    logger.info("Flask app started with data update functionality")
+    # In a serverless environment like Vercel, we don't run background threads
+    # Only start background update thread in local development
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == '--local':
+        update_thread = threading.Thread(target=background_update_thread)
+        update_thread.daemon = True
+        update_thread.start()
+        logger.info("Background update thread started for local development")
+    elif os.environ.get('VERCEL'):
+        # Don't start background thread on Vercel
+        logger.info("Running on Vercel, background updates disabled")
+
+    logger.info("Flask app started")
     # Run app in production mode on cloud deployment
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
+
+# For Vercel deployment, make sure to import app at module level
+# This allows Vercel's Python runtime to correctly load the application
+elif __name__.startswith('vc_apprunner_') or os.environ.get('VERCEL'):
+    # When running in Vercel environment
+    logger.info("Vercel environment detected, initializing app")
 

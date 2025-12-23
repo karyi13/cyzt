@@ -638,20 +638,34 @@
                 }
             });
 
-            // 排名范围联动
+            // 排名范围联动 - allow independent setting but ensure min <= max
             const rankMinInput = document.getElementById('rankMin');
             const rankMaxInput = document.getElementById('rankMax');
 
             rankMinInput.addEventListener('input', function() {
                 const minVal = parseInt(rankMinInput.value);
+                const maxVal = parseInt(rankMaxInput.value);
+
                 if (!isNaN(minVal)) {
-                    rankMaxInput.value = minVal;
+                    // Ensure min doesn't exceed max
+                    if (!isNaN(maxVal) && minVal > maxVal) {
+                        rankMaxInput.value = minVal;
+                    }
                     applyFilters();
                 }
             });
 
             rankMaxInput.addEventListener('input', function() {
-                applyFilters();
+                const maxVal = parseInt(rankMaxInput.value);
+                const minVal = parseInt(rankMinInput.value);
+
+                if (!isNaN(maxVal)) {
+                    // Ensure max isn't less than min
+                    if (!isNaN(minVal) && maxVal < minVal) {
+                        rankMinInput.value = maxVal;
+                    }
+                    applyFilters();
+                }
             });
 
             // 实时筛选

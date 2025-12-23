@@ -18,7 +18,6 @@ from urllib3.util.retry import Retry
 import urllib.request
 import threading
 import baostock as bs
-from pytdx.hq import TdxHq_API
 import warnings
 import socket
 import logging
@@ -26,6 +25,19 @@ from collections import deque
 import sys
 import numpy as np
 from pathlib import Path
+
+# Fix for Python 3.10+ compatibility: ensure Iterable is available in collections
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
+
+# Monkey patch collections to include Iterable for pytdx compatibility
+import collections
+if not hasattr(collections, 'Iterable'):
+    collections.Iterable = Iterable
+
+from pytdx.hq import TdxHq_API
 warnings.filterwarnings("ignore")
 
 # 设置日志配置
@@ -93,7 +105,7 @@ class PytdxConnectionPool:
     def __init__(self, max_connections=5, server_list=None, check_interval=300):
         """
         初始化pytdx连接池
-        
+
         Args:
             max_connections: 最大连接数
             server_list: 服务器列表
@@ -108,11 +120,11 @@ class PytdxConnectionPool:
         self.lock = threading.RLock()
         self.check_interval = check_interval
         self.last_check_time = time.time()
-        
+
         # 启动健康检查线程
         self.health_check_thread = threading.Thread(target=self._health_check_loop, daemon=True)
         self.health_check_thread.start()
-    
+
     def _create_connection(self):
         """创建一个新的pytdx连接"""
         for ip, port in self.server_list:
@@ -132,10 +144,10 @@ class PytdxConnectionPool:
                 except:
                     pass
                 continue
-        
+
         logger.error("所有服务器连接失败")
         return None
-    
+
     def _check_connection_health(self, client):
         """检查连接是否健康（适配旧版本pytdx）"""
         try:
@@ -143,7 +155,7 @@ class PytdxConnectionPool:
             # 不使用任何高级API方法，避免兼容性问题
             if client is None:
                 return False
-            
+
             # 对于旧版本pytdx，我们暂时跳过主动检查，直接返回True
             # 因为任何API调用都可能在旧版本上失败
             # 连接的有效性将在实际使用时通过异常处理来验证
@@ -151,23 +163,23 @@ class PytdxConnectionPool:
         except Exception as e:
             logger.warning(f"连接健康检查失败: {str(e)}")
             return False
-    
+
     def _health_check_loop(self):
         """定期健康检查循环"""
         while True:
             time.sleep(min(self.check_interval, 60))  # 最多等待60秒
             self._clean_dead_connections()
-    
+
     def _clean_dead_connections(self):
         """清理无效连接"""
         with self.lock:
             current_time = time.time()
             if current_time - self.last_check_time < self.check_interval:
                 return
-            
+
             self.last_check_time = current_time
             healthy_connections = []
-            
+
             # 检查空闲连接
             for conn in self.connections:
                 if self._check_connection_health(conn):
@@ -178,14 +190,14 @@ class PytdxConnectionPool:
                     except:
                         pass
                     logger.info("移除了一个不健康的空闲连接")
-            
+
             self.connections = deque(healthy_connections)
-    
+
     def get_connection(self):
         """从连接池获取一个连接"""
         start_time = time.time()
         max_wait_time = 10  # 最大等待时间10秒
-        
+
         while time.time() - start_time < max_wait_time:
             with self.lock:
                 # 先尝试从现有空闲连接中获取
@@ -200,25 +212,25 @@ class PytdxConnectionPool:
                         except:
                             pass
                         logger.info("移除了一个不健康的空闲连接")
-                
+
                 # 如果没有空闲连接且未达到最大连接数，则创建新连接
                 if len(self.in_use) < self.max_connections:
                     conn = self._create_connection()
                     if conn:
                         self.in_use.add(conn)
                         return conn
-            
+
             # 等待一小段时间再尝试
             time.sleep(0.1)
-        
+
         logger.error("获取连接超时")
         return None
-    
+
     def release_connection(self, conn):
         """释放连接回连接池"""
         if conn is None:
             return
-        
+
         with self.lock:
             if conn in self.in_use:
                 self.in_use.remove(conn)
@@ -229,7 +241,7 @@ class PytdxConnectionPool:
                         conn.disconnect()
                     except:
                         pass
-    
+
     def close_all(self):
         """关闭所有连接"""
         with self.lock:
@@ -240,14 +252,14 @@ class PytdxConnectionPool:
                     conn.disconnect()
                 except:
                     pass
-            
+
             # 关闭正在使用的连接
             for conn in list(self.in_use):
                 try:
                     conn.disconnect()
                 except:
                     pass
-            
+
             self.in_use.clear()
 
 # 创建全局连接池实例
@@ -262,7 +274,7 @@ def fetch_kline_pytdx(code: str, start: datetime.date, end: datetime.date) -> pd
     retry_count = 0
     max_retries = 3
     api = None
-    
+
     while retry_count < max_retries:
         try:
             # 从连接池获取连接
@@ -272,18 +284,18 @@ def fetch_kline_pytdx(code: str, start: datetime.date, end: datetime.date) -> pd
                 # 根据用户要求，移除连接获取失败时的延迟
                 logger.warning(f"无法从连接池获取连接，立即重试 (尝试 {retry_count}/{max_retries})")
                 continue
-            
+
             # 设置请求超时保护
             timeout_seconds = 30  # 设置30秒超时
-            
+
             # 使用socket超时上下文
             original_timeout = socket.getdefaulttimeout()
             socket.setdefaulttimeout(timeout_seconds)
-            
+
             try:
                 # 简化API调用参数，减小数据量以提高成功率
                 max_days = min((end - start).days + 60, 1000)  # 限制数据量
-                
+
                 # 首先尝试旧版本API方法
                 try:
                     bars = api.get_security_bars(9, market, code, 0, max_days)
@@ -296,7 +308,7 @@ def fetch_kline_pytdx(code: str, start: datetime.date, end: datetime.date) -> pd
                     except:
                         # 尝试直接创建DataFrame
                         bars = []
-                
+
                 # 针对旧版本pytdx的兼容性处理
                 if hasattr(api, 'to_df') and callable(api.to_df) and bars:
                     df = api.to_df(bars)
@@ -317,19 +329,19 @@ def fetch_kline_pytdx(code: str, start: datetime.date, end: datetime.date) -> pd
                                 df = pd.DataFrame()
                     else:
                         df = pd.DataFrame()
-                
+
             finally:
                 # 恢复原始超时设置
                 socket.setdefaulttimeout(original_timeout)
-            
+
             elapsed = time.time() - start_time
             if elapsed > timeout_seconds * 0.8:
                 logger.warning(f"获取{code}数据耗时较长: {elapsed:.2f}秒")
-                
+
             if df.empty:
                 logger.warning(f"获取{code}返回空数据")
                 return pd.DataFrame()
-                
+
             # 处理不同版本可能的列名差异
             column_mapping = {
                 'datetime': '日期',
@@ -340,43 +352,43 @@ def fetch_kline_pytdx(code: str, start: datetime.date, end: datetime.date) -> pd
                 'vol': '成交量', 'volume': '成交量',
                 'amount': '成交额', 'turnover': '成交额'
             }
-            
+
             # 动态重命名列
             rename_dict = {}
             for old_col, new_col in column_mapping.items():
                 if old_col in df.columns:
                     rename_dict[old_col] = new_col
-            
+
             df = df.rename(columns=rename_dict)
-            
+
             # 确保有日期列
             if '日期' not in df.columns:
                 logger.warning(f"缺少日期列: {df.columns.tolist()}")
                 return pd.DataFrame()
-                
+
             # 过滤时间范围
             df['日期'] = pd.to_datetime(df['日期'])
             df = df[(df['日期'] >= pd.Timestamp(start)) & (df['日期'] <= pd.Timestamp(end))]
-            
+
             # 确保必要的列存在
             required_columns = ['日期', '开盘', '最高', '最低', '收盘', '成交量']
             missing_columns = [col for col in required_columns if col not in df.columns]
             if missing_columns:
                 logger.warning(f"缺少必要列: {missing_columns}")
                 return pd.DataFrame()
-                
+
             # 添加成交额列（如果不存在）
             if '成交额' not in df.columns:
                 df['成交额'] = 0
-                
+
             # 格式化最终结果
             df = df[['日期', '开盘', '最高', '最低', '收盘', '成交量', '成交额']]
             df['股票代码'] = code
             df['日期'] = df['日期'].dt.strftime('%Y-%m-%d')
-            
+
             logger.info(f"成功获取{code}的K线数据，耗时: {elapsed:.2f}秒, 记录数: {len(df)}")
             return df.reset_index(drop=True)
-            
+
         except (socket.timeout, Exception) as e:
             retry_count += 1
             # 根据用户要求，移除重试时的延迟
@@ -385,7 +397,7 @@ def fetch_kline_pytdx(code: str, start: datetime.date, end: datetime.date) -> pd
             # 释放连接回连接池
             if api:
                 connection_pool.release_connection(api)
-    
+
     logger.error(f"获取{code}数据失败，已达到最大重试次数")
     return pd.DataFrame()
 
@@ -440,55 +452,55 @@ def retry_with_backoff(func, max_retries=RETRY_COUNT, base_delay=RETRY_DELAY, ma
             # 其他错误，打印错误信息但不重试
             print(f"执行错误: {str(e)}")
             return pd.DataFrame() if 'fetch_kline' in func.__name__ else None
-    
+
     print(f"达到最大重试次数 ({max_retries})，放弃重试")
     return pd.DataFrame() if 'fetch_kline' in func.__name__ else None
 
-def fetch_kline_data(stock_code, date, period='daily', adjust=""): 
-    """ 
-    Fetches historical K-line data for a given stock code and date range based on trade dates. 
+def fetch_kline_data(stock_code, date, period='daily', adjust=""):
+    """
+    Fetches historical K-line data for a given stock code and date range based on trade dates.
 
-    Args: 
-        stock_code (str): The stock code. 
-        date (str or datetime): The reference date (must be a trade date). 
-        period (str): The period of the K-line data (e.g., 'daily', 'weekly', 'monthly'). 
-        adjust (str): The adjustment type (e.g., '', 'hfq', 'qfq'). 
+    Args:
+        stock_code (str): The stock code.
+        date (str or datetime): The reference date (must be a trade date).
+        period (str): The period of the K-line data (e.g., 'daily', 'weekly', 'monthly').
+        adjust (str): The adjustment type (e.g., '', 'hfq', 'qfq').
 
-    Returns: 
-        pandas.DataFrame: The K-line data. 
-    """ 
-    if isinstance(date, str): 
-        date = datetime.datetime.strptime(date, '%Y-%m-%d').date() 
-    elif isinstance(date, datetime.datetime): 
-        date = date.date() 
+    Returns:
+        pandas.DataFrame: The K-line data.
+    """
+    if isinstance(date, str):
+        date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+    elif isinstance(date, datetime.datetime):
+        date = date.date()
 
-    # Ensure trade_dates_df is available and sorted 
-    global trade_dates_df 
-    if 'trade_dates_df' not in globals() or trade_dates_df.empty: 
-        trade_dates_df = ak.tool_trade_date_hist_sina() 
-        trade_dates_df['trade_date'] = pd.to_datetime(trade_dates_df['trade_date']) # Convert to Timestamp 
-        trade_dates_df.sort_values(by='trade_date', inplace=True) 
+    # Ensure trade_dates_df is available and sorted
+    global trade_dates_df
+    if 'trade_dates_df' not in globals() or trade_dates_df.empty:
+        trade_dates_df = ak.tool_trade_date_hist_sina()
+        trade_dates_df['trade_date'] = pd.to_datetime(trade_dates_df['trade_date']) # Convert to Timestamp
+        trade_dates_df.sort_values(by='trade_date', inplace=True)
 
-    # Calculate the start date (one year before the given date) 
-    start_date_obj = date - datetime.timedelta(days=365) # Approximate one year 
+    # Calculate the start date (one year before the given date)
+    start_date_obj = date - datetime.timedelta(days=365) # Approximate one year
 
-    # Calculate the end date (one month after the given date) 
-    # This is a bit tricky with varying month lengths, a simple approach is to add 30 days 
-    end_date_obj = date + datetime.timedelta(days=30) # Approximate one month 
+    # Calculate the end date (one month after the given date)
+    # This is a bit tricky with varying month lengths, a simple approach is to add 30 days
+    end_date_obj = date + datetime.timedelta(days=30) # Approximate one month
 
-    # Convert date objects to Timestamp objects for searchsorted 
-    start_date_ts = pd.Timestamp(start_date_obj) 
-    end_date_ts = pd.Timestamp(end_date_obj) 
+    # Convert date objects to Timestamp objects for searchsorted
+    start_date_ts = pd.Timestamp(start_date_obj)
+    end_date_ts = pd.Timestamp(end_date_obj)
 
-    # Find the closest trade dates to the calculated start and end dates 
-    start_date_kline = trade_dates_df.iloc[trade_dates_df['trade_date'].searchsorted(start_date_ts, side='left')]['trade_date'].strftime('%Y%m%d') 
+    # Find the closest trade dates to the calculated start and end dates
+    start_date_kline = trade_dates_df.iloc[trade_dates_df['trade_date'].searchsorted(start_date_ts, side='left')]['trade_date'].strftime('%Y%m%d')
     end_date_kline = trade_dates_df.iloc[trade_dates_df['trade_date'].searchsorted(end_date_ts, side='right') -1]['trade_date'].strftime('%Y%m%d')
 
-    try: 
-        stock_df = ak.stock_zh_a_hist(symbol=stock_code, period=period, start_date=start_date_kline, end_date=end_date_kline, adjust=adjust) 
-        return stock_df 
-    except Exception as e: 
-        print(f"Error fetching data for {stock_code} on {date}: {e}") 
+    try:
+        stock_df = ak.stock_zh_a_hist(symbol=stock_code, period=period, start_date=start_date_kline, end_date=end_date_kline, adjust=adjust)
+        return stock_df
+    except Exception as e:
+        print(f"Error fetching data for {stock_code} on {date}: {e}")
         return pd.DataFrame()
 
 def fetch_kline_data_pytdx_bao(stock_code, date, period='daily', adjust=""):
@@ -505,33 +517,33 @@ def fetch_kline_data_pytdx_bao(stock_code, date, period='daily', adjust=""):
     except ValueError:
         # 如果是2月29日且上一年不是闰年，回退到365天计算
         start = date - datetime.timedelta(days=365)
-    
+
     end = date + datetime.timedelta(days=30)
     code_pure = str(stock_code).split('.')[0][-6:]
-    
+
     print(f"开始获取股票 {code_pure} 的K线数据 (pytdx/baostock)")
-    
+
     # 首先尝试pytdx，带重试机制
     df = retry_with_backoff(fetch_kline_pytdx, RETRY_COUNT, RETRY_DELAY, MAX_DELAY, code_pure, start, end)
-    
+
     # 如果pytdx失败，切换到baostock，同样带重试机制
     if df.empty:
         print(f"[pytdx failed] 切换到baostock获取 {code_pure}")
         df = retry_with_backoff(fetch_kline_baostock, RETRY_COUNT, RETRY_DELAY, MAX_DELAY, code_pure, start, end)
-    
+
     if not df.empty:
         df = df[['日期', '开盘', '最高', '最低', '收盘', '成交量', '成交额', '股票代码']]
-        
+
         # 确保日期列为datetime类型
         try:
             if not pd.api.types.is_datetime64_any_dtype(df['日期']):
                 df['日期'] = pd.to_datetime(df['日期'])
-            
+
             date_str = date.strftime('%Y-%m-%d')
-            
+
             # 找出目标日期在DataFrame中的索引位置
             date_idx = df[df['日期'] >= pd.to_datetime(date_str)].index.min()
-            
+
             # 如果找到了目标日期，只保留从一年前到目标日期后5根的数据
             if pd.notna(date_idx):
                 # 确保索引有效
@@ -543,11 +555,11 @@ def fetch_kline_data_pytdx_bao(stock_code, date, period='daily', adjust=""):
                 print(f"保留股票 {code_pure} 从一年前到目标日期{date_str}后5根的完整K线数据")
         except Exception as e:
             print(f"处理K线数据时出错: {str(e)}")
-        
+
         print(f"成功获取股票 {code_pure} 的K线数据，共{len(df)}条记录")
     else:
         print(f"警告: 无法获取股票 {code_pure} 的K线数据")
-    
+
     return df
 
 # ---------- 原脚本：Step1 涨停池抓取 ----------
@@ -581,50 +593,155 @@ final_filtered_df = pd.concat(all_filtered_stocks_daily, ignore_index=True) if a
 
 # ---------- 优化后的K线补全逻辑 ----------
 def process_stock_batch(batch_stocks, kline_cache_dir):
-    """处理一个批次的股票数据，添加更好的错误处理"""
+    """处理一个批次的股票数据，添加更好的错误处理和增量更新逻辑"""
     batch_success = 0
     batch_fail = 0
-    
+
     for _, row in batch_stocks.iterrows():
         stock_code, date_str = str(row['股票代码']), row['日期']
-        file_name = f'{date_str}_{stock_code}.SZ.csv'
+        # 确保股票代码不包含.SZ或.SS后缀，避免重复添加
+        stock_code_clean = stock_code.replace('.SZ', '').replace('.SS', '')
+        file_name = f'{date_str}_{stock_code_clean}.SZ.csv'
         file_path = os.path.join(kline_cache_dir, file_name)
-            
-        # 检查缓存是否存在，即使缓存存在也重新获取数据
-        if os.path.exists(file_path):
-            print(f"缓存命中: {stock_code} {date_str}, 但重新获取数据")
-            # 移除continue语句，确保重新获取数据
-        
-        try:
-            # 记录开始时间
-            start_time = time.time()
-            
-            # 获取K线数据
-            kline_df = fetch_kline_data_pytdx_bao(stock_code, date_str)
-            
-            # 处理结果
-            if not kline_df.empty:
-                # 确保目录存在
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                # 保存数据
-                kline_df.to_csv(file_path, index=False, encoding='utf-8')
-                batch_success += 1
-                elapsed = time.time() - start_time
-                print(f"保存成功: {stock_code} {date_str} ({elapsed:.2f}秒)")
-            else:
+
+        # --- 修改点：增强缓存检查逻辑 ---
+        cache_needs_update = True
+        existing_data_end_date = None
+
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+            try:
+                # 读取缓存文件的头部和尾部信息（只需要日期列）
+                temp_df = pd.read_csv(file_path, usecols=['日期']) # 只读取日期列
+                if not temp_df.empty:
+                    temp_df['日期'] = pd.to_datetime(temp_df['日期'])
+                    existing_data_end_date = temp_df['日期'].max() # 获取缓存中的最晚日期
+                    # --- 计算理论上需要的最晚日期 ---
+                    # 获取涨停日期后的5个交易日
+                    # 需要知道涨停日期对应的在交易日历中的索引
+                    # 这里需要获取交易日历 (trade_dates_df) 来辅助计算
+                    global trade_dates_df # 假设这个全局变量可用
+                    if 'trade_dates_df' not in globals() or trade_dates_df.empty:
+                         trade_dates_df = ak.tool_trade_date_hist_sina()
+                         trade_dates_df['trade_date'] = pd.to_datetime(trade_dates_df['trade_date'])
+                         trade_dates_df.sort_values(by='trade_date', inplace=True)
+
+                    limit_up_date = pd.to_datetime(date_str)
+                    # 找到涨停日在交易日历中的位置
+                    limit_up_idx = trade_dates_df[trade_dates_df['trade_date'] == limit_up_date].index
+                    if not limit_up_idx.empty:
+                        limit_up_idx_val = limit_up_idx[0]
+                        # 计算涨停日后第5个交易日的索引 (严格按交易日计算)
+                        target_end_idx = limit_up_idx_val + 5
+                        if target_end_idx < len(trade_dates_df):
+                            theoretical_end_date = trade_dates_df.iloc[target_end_idx]['trade_date']
+                        else:
+                            # 如果涨停日后不足5个交易日，则以最后一个交易日为准
+                            theoretical_end_date = trade_dates_df['trade_date'].iloc[-1]
+                    else:
+                        # 如果涨停日不在交易日历中，这是一个问题，可能需要特殊处理或跳过
+                        print(f"警告: 涨停日 {date_str} 不在交易日历中，跳过 {stock_code}。")
+                        batch_fail += 1
+                        continue
+
+                    # --- 比较日期决定是否更新 ---
+                    # 获取当前日期，并检查是否过了A股收盘时间（通常15:00）
+                    current_datetime = pd.Timestamp(datetime.datetime.now())
+                    current_date = pd.Timestamp(datetime.datetime.now().date())
+
+                    # A股收盘时间为15:00，如果当前时间还没到15:00，则今天的数据不完整
+                    market_close_time = pd.Timestamp(current_datetime.date()).replace(hour=15, minute=0, second=0, microsecond=0)
+                    if current_datetime < market_close_time:
+                        # 当前时间未到收盘时间，不包含今天的日期
+                        current_date = current_date - pd.Timedelta(days=1)
+                    else:
+                        # 已过收盘时间，可以包含今天的日期
+                        current_date = pd.Timestamp(datetime.datetime.now().date())
+
+                    # 实际需要的最晚日期是理论日期和当前日期中的较小者
+                    required_end_date = min(theoretical_end_date, current_date)
+
+                    if existing_data_end_date >= required_end_date:
+                        print(f"缓存充足: {stock_code} {date_str}, 缓存截至 {existing_data_end_date.date()}, 需求截至 {required_end_date.date()}, 跳过")
+                        cache_needs_update = False
+                        batch_success += 1 # 认为成功（因为已有足够数据）
+                    else:
+                        print(f"缓存不足: {stock_code} {date_str}, 缓存截至 {existing_data_end_date.date()}, 需求截至 {required_end_date.date()}, 需要更新")
+                        # 准备增量获取数据
+                        incremental_start_date = existing_data_end_date + pd.Timedelta(days=1)
+                        incremental_end_date = required_end_date
+                else:
+                     # 文件存在但内容为空或只有表头
+                     print(f"缓存文件为空或无效: {stock_code} {date_str}, 重新获取数据")
+                     # 保持 cache_needs_update = True
+            except Exception as e:
+                print(f"读取缓存文件以检查更新时出错 {file_path}: {str(e)}, 将重新获取")
+                # 发生错误，认为缓存有问题，需要重新获取
+        else:
+             print(f"缓存文件不存在或为空: {file_path}, 需要获取数据")
+
+
+        if cache_needs_update:
+            try:
+                # --- 获取增量或全新数据 ---
+                if existing_data_end_date is not None: # 存在旧数据，需增量获取
+                     print(f"获取增量数据: {stock_code} 从 {incremental_start_date.date()} 到 {incremental_end_date.date()}")
+                     # 注意：fetch_kline_data_pytdx_bao 函数本身是获取从一年前到目标日期后5天的数据
+                     # 我们需要调整它的逻辑，使其能接受一个具体的 start 和 end 日期来获取增量
+                     # 这里假设我们有一个新的函数 fetch_kline_incremental 或修改原函数
+                     # 或者，重新获取从一年前到当前所需结束日期的完整数据（虽然可能效率略低，但实现简单）
+                     # 方案A: 重新获取完整数据（覆盖旧文件）
+                     print(f"  (策略: 重新获取完整数据覆盖旧文件)")
+                     kline_df_full = fetch_kline_data_pytdx_bao(stock_code, date_str) # 传入涨停日期，让它获取到最新
+                     if not kline_df_full.empty:
+                         os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                         kline_df_full.to_csv(file_path, index=False, encoding='utf-8')
+                         batch_success += 1
+                         print(f"  (完整数据) 保存成功: {stock_code} {date_str}")
+                     else:
+                         batch_fail += 1
+                         print(f"  (完整数据) 数据获取失败: {stock_code} {date_str}")
+
+                     # 方案B: 获取增量数据并追加（需要修改 fetch_kline_data_pytdx_bao 或创建新函数）
+                     # kline_df_incremental = fetch_kline_pytdx_bao_or_akshare(stock_code, incremental_start_date.date(), incremental_end_date.date())
+                     # if not kline_df_incremental.empty:
+                     #     # 读取原文件
+                     #     original_df = pd.read_csv(file_path)
+                     #     # 合并
+                     #     updated_df = pd.concat([original_df, kline_df_incremental], ignore_index=True)
+                     #     # 重新排序（按日期）
+                     #     updated_df.sort_values(by='日期', inplace=True)
+                     #     # 去重（以防万一）
+                     #     updated_df.drop_duplicates(subset=['日期'], keep='first', inplace=True)
+                     #     # 保存
+                     #     updated_df.to_csv(file_path, index=False, encoding='utf-8')
+                     #     batch_success += 1
+                     #     print(f"  (增量数据) 保存成功: {stock_code} {date_str}")
+                     # else:
+                     #     batch_fail += 1
+                     #     print(f"  (增量数据) 增量获取失败: {stock_code} {date_str}")
+
+                else: # 不存在旧数据，首次获取
+                    print(f"获取首次数据: {stock_code} {date_str}")
+                    start_time = time.time()
+                    kline_df = fetch_kline_data_pytdx_bao(stock_code, date_str)
+                    if not kline_df.empty:
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                        kline_df.to_csv(file_path, index=False, encoding='utf-8')
+                        batch_success += 1
+                        elapsed = time.time() - start_time
+                        print(f"保存成功: {stock_code} {date_str} ({elapsed:.2f}秒)")
+                    else:
+                        batch_fail += 1
+                        print(f"数据获取失败: {stock_code} {date_str}")
+
+            except Exception as e:
                 batch_fail += 1
-                print(f"数据获取失败: {stock_code} {date_str}")
-                
-        except Exception as e:
-            batch_fail += 1
-            print(f"处理异常 {stock_code} {date_str}: {str(e)}")
-            # 记录错误日志
-            with open('error_log.txt', 'a', encoding='utf-8') as f:
-                f.write(f"{datetime.datetime.now()}: {stock_code} {date_str} - {str(e)}\n")
-        finally:
-            # 根据用户要求，移除pytdx相关的休息时间
-            pass
-    
+                print(f"处理异常 {stock_code} {date_str}: {str(e)}")
+                # 记录错误日志
+                with open('error_log.txt', 'a', encoding='utf-8') as f:
+                    f.write(f"{datetime.datetime.now()}: {stock_code} {date_str} - {str(e)}\n")
+        # --- 如果不需要更新，已经在上面处理了 batch_success ---
+
     return batch_success, batch_fail
 
 # 主处理逻辑
@@ -640,17 +757,18 @@ combined_filtered_df_for_kline = pd.concat(
 
 if not combined_filtered_df_for_kline.empty:
     combined_filtered_df_for_kline['股票代码'] = combined_filtered_df_for_kline['股票代码'].astype(str)
+    # 修复重复问题：对股票代码和日期的组合进行去重
     unique_stocks_dates = combined_filtered_df_for_kline[['股票代码', '日期']].dropna().drop_duplicates()
     success_count, fail_count = 0, 0
     batch_size = 5
     total_batches = (len(unique_stocks_dates) + batch_size - 1) // batch_size
-    
+
     print(f"\n总共有 {len(unique_stocks_dates)} 只股票需要处理，分为 {total_batches} 个批次")
-    
+
     # 创建错误日志文件
     with open('error_log.txt', 'w', encoding='utf-8') as f:
         f.write(f"错误日志 - 开始时间: {datetime.datetime.now()}\n")
-    
+
     for batch_idx in range(total_batches):
         try:
             start_idx = batch_idx * batch_size
@@ -658,19 +776,19 @@ if not combined_filtered_df_for_kline.empty:
             batch_stocks = unique_stocks_dates.iloc[start_idx:end_idx]
             print(f"\n=== 批次 {batch_idx+1}/{total_batches} ===")
             print(f"处理股票范围: {start_idx+1} 到 {end_idx}")
-            
+
             # 处理当前批次
             batch_success, batch_fail = process_stock_batch(batch_stocks, kline_cache_dir)
             success_count += batch_success
             fail_count += batch_fail
-            
+
             print(f"批次 {batch_idx+1} 完成: 成功 {batch_success}, 失败 {batch_fail}")
             print(f"累计进度: 成功 {success_count}, 失败 {fail_count}, 总成功率: {(success_count/(success_count+fail_count))*100:.2f}%")
-            
+
             # 根据用户要求，移除批次间的休息时间
             if batch_idx < total_batches - 1:
                 print(f"准备处理下一批次...")
-                
+
         except Exception as e:
             print(f"批次 {batch_idx+1} 处理异常: {str(e)}")
             # 记录批次错误
@@ -678,7 +796,7 @@ if not combined_filtered_df_for_kline.empty:
                 f.write(f"{datetime.datetime.now()}: 批次 {batch_idx+1} 异常 - {str(e)}\n")
             # 批次失败后，暂停更长时间再继续
             print("批次处理失败，继续处理下一批次...")
-    
+
     print(f"\n====================================")
     print(f"K线数据获取完成")
     print(f"总处理: {success_count + fail_count}")
@@ -692,7 +810,7 @@ else:
     print("请检查日期范围和数据目录是否正确。")
 
 print("\n--- 所有任务已完成 ---")
-   
+
 # 测试函数已移除
 
 # ---------- 涨停表现分析函数 ----------
@@ -701,19 +819,19 @@ def analyze_trade_performance():
     分析涨停后的交易表现，生成交易结果
     """
     print("\n--- 开始分析涨停后表现 ---")
-    
+
     # 检查kline_cache_dir是否存在
     if not os.path.isdir(kline_cache_dir):
         print(f"错误：kline_cache_dir '{kline_cache_dir}' 不存在。")
         return False
-    
+
     # 读取所有CSV文件到pandas DataFrames
     kline_files = list(Path(kline_cache_dir).glob("*.csv"))
-    
+
     if not kline_files:
         print(f"在目录 '{kline_cache_dir}' 中没有找到任何CSV文件。")
         return False
-    
+
     all_stock_data = {}
     for file_path in kline_files:
         file_name = file_path.stem  # 获取文件名（不含扩展名）
@@ -723,64 +841,64 @@ def analyze_trade_performance():
                 all_stock_data[file_name] = df
         except Exception as e:
             print(f"读取文件 {file_path} 失败: {e}。跳过此文件。")
-    
+
     if not all_stock_data:
         print("没有成功读取任何股票数据。")
         return False
-    
+
     # 处理数据并计算交易结果
     trade_results = []
-    
+
     for file_name, df in all_stock_data.items():
         parts = file_name.split("_")
         if len(parts) < 2:
             print(f"文件名格式不正确，跳过文件: {file_name}。期望格式为 'YYYY-MM-DD_股票代码.csv'。")
             continue
-        
+
         date_str = parts[0]
         stock_code = parts[1].split(".")[0]  # 去除可能的后缀，如.SZ
-        
+
         if '日期' not in df.columns:
             print(f"股票代码: {stock_code}, 涨停日期: {date_str}: 数据中没有找到 '日期' 列，跳过处理。")
             continue
-        
+
         df['日期'] = pd.to_datetime(df['日期'])
         try:
             trade_date = pd.to_datetime(date_str)
         except ValueError:
             print(f"文件名中的日期格式不正确，跳过文件: {file_name}。")
             continue
-        
+
         # 查找涨停日期在DataFrame中的索引
         if trade_date in df['日期'].values:
             trade_date_index = df[df['日期'] == trade_date].index[0]
             buy_date_index = trade_date_index + 1  # 买入日期是涨停日期的下一个交易日
             sell_date_index = buy_date_index + 1   # 卖出日期是买入日期的下一个交易日
-        
+
             # 检查是否有足够的后续交易日数据
             if sell_date_index < len(df):
                 buy_price = df.loc[buy_date_index, '开盘']
                 sell_price = df.loc[sell_date_index, '收盘']
                 profit_loss = sell_price - buy_price
-        
+
                 # 计算买入日期和卖出日期的涨跌幅
                 buy_date_open_change = None
                 buy_date_close_change = None
                 sell_date_open_change = None
                 sell_date_close_change = None
-        
+
                 if trade_date_index >= 0:
                     prev_close_price_buy = df.loc[trade_date_index, '收盘']
                     if prev_close_price_buy != 0:
                         buy_date_open_change = ((df.loc[buy_date_index, '开盘'] - prev_close_price_buy) / prev_close_price_buy) * 100
                         buy_date_close_change = ((df.loc[buy_date_index, '收盘'] - prev_close_price_buy) / prev_close_price_buy) * 100
-        
+
                 if buy_date_index >= 0 and buy_date_index < len(df):
                     prev_close_price_sell = df.loc[buy_date_index, '收盘']
                     if prev_close_price_sell != 0:
                         sell_date_open_change = ((df.loc[sell_date_index, '开盘'] - prev_close_price_sell) / prev_close_price_sell) * 100
                         sell_date_close_change = ((df.loc[sell_date_index, '收盘'] - prev_close_price_sell) / prev_close_price_sell) * 100
-        
+
                 trade_results.append({
                     '涨停日期': trade_date.date(),
                     '股票代码': stock_code,
@@ -792,16 +910,19 @@ def analyze_trade_performance():
                     '卖出日期开盘涨跌幅': sell_date_open_change,
                     '卖出日期收盘涨跌幅': sell_date_close_change
                 })
-    
+
     # 创建DataFrame并计算 '盈亏比例'
     if trade_results:
         trade_df = pd.DataFrame(trade_results)
-        
+
         # 计算 '盈亏比例'
         trade_df['盈亏比例'] = trade_df.apply(
-            lambda row: ((row['卖出价'] - row['买入价']) / row['买入价']) * 100 if row['买入价'] != 0 else 0, 
+            lambda row: ((row['卖出价'] - row['买入价']) / row['买入价']) * 100 if row['买入价'] != 0 else 0,
             axis=1
         )
+
+        # 去重：确保每个涨停日期和股票代码的组合只保留一条记录
+        trade_df = trade_df.drop_duplicates(subset=['涨停日期', '股票代码'], keep='first')
         
         # 保存到CSV文件（保存到templates文件夹）
         output_csv_path = os.path.join(templates_dir, trade_results_filename)
@@ -823,33 +944,36 @@ def calculate_position_suggestions():
     计算仓位建议
     """
     print("\n--- 开始计算仓位建议 ---")
-    
+
     # 读取交易结果文件（从templates文件夹读取）
     input_file_path = os.path.join(templates_dir, trade_results_filename)
-    
+
     if not os.path.exists(input_file_path):
         print(f"错误：输入文件 '{input_file_path}' 不存在")
         return False
-    
+
     df = pd.read_csv(input_file_path)
     print(f"CSV文件 '{input_file_path}' 读取成功，共 {len(df)} 条记录。")
+
+    # 再次对数据进行去重，确保每个涨停日期和股票代码组合只有一条记录
+    df = df.drop_duplicates(subset=['涨停日期', '股票代码'], keep='first')
     
     # Calculate the total count of trades for each '涨停日期'
     df['总数'] = df.groupby('涨停日期')['涨停日期'].transform('count')
-    
+
     # Calculate the rank based on '买入日期开盘涨跌幅' within each '涨停日期' group
     df['排名'] = df.groupby('涨停日期')['买入日期开盘涨跌幅'].rank(ascending=False).astype(int)
-    
+
     # Determine the minimum and maximum values of '买入日期开盘涨跌幅'
     min_change = df['买入日期开盘涨跌幅'].min()
     max_change = df['买入日期开盘涨跌幅'].max()
-    
+
     # Define the bins for the intervals with a step of 1
     bins = np.arange(int(min_change), int(max_change) + 2, 1)
-    
+
     # Create a new column for the '买入日期开盘涨跌幅' intervals
     df['涨跌幅区间'] = pd.cut(df['买入日期开盘涨跌幅'], bins=bins, right=False, include_lowest=True)
-    
+
     # Group by '排名' and '涨跌幅区间' and calculate metrics
     grouped_df = df.groupby(['排名', '涨跌幅区间'], observed=True).agg(
         盈利数量=('盈亏比例', lambda x: (x > 0).sum()),
@@ -858,93 +982,96 @@ def calculate_position_suggestions():
         平均亏损=('盈亏比例', lambda x: x[x < 0].mean()),
         总交易数=('盈亏比例', 'count')
     ).reset_index()
-    
+
     # Calculate Win Rate and Loss Rate
     grouped_df['胜率'] = grouped_df['盈利数量'] / grouped_df['总交易数']
     grouped_df['亏损率'] = grouped_df['亏损数量'] / grouped_df['总交易数']
-    
+
     # Handle cases where there are no winning or losing trades
     grouped_df['平均盈利'] = grouped_df['平均盈利'].replace([np.inf, -np.inf], np.nan).fillna(0)
     grouped_df['平均亏损'] = grouped_df['平均亏损'].replace([np.inf, -np.inf], np.nan).fillna(0)
-    
+
     # Calculate the Win/Loss Ratio
     grouped_df['盈亏比'] = np.where(
-        grouped_df['平均亏损'] != 0, 
-        abs(grouped_df['平均盈利'] / grouped_df['平均亏损']), 
+        grouped_df['平均亏损'] != 0,
+        abs(grouped_df['平均盈利'] / grouped_df['平均亏损']),
         np.nan
     )
-    
+
     # Calculate Kelly Percentage
     grouped_df['凯莉公式仓位'] = np.where(
         (grouped_df['盈亏比'].notna()) & (grouped_df['胜率'].notna()),
         grouped_df['胜率'] - (1 - grouped_df['胜率']) / grouped_df['盈亏比'],
         np.nan
     )
-    
+
     # Filter out rows where '总交易数' is 0
     filtered_grouped_df = grouped_df[grouped_df['总交易数'] != 0].copy()
-    
+
     # Merge the original df with the filtered_grouped_df
     merged_df = pd.merge(
-        df, 
+        df,
         filtered_grouped_df[['排名', '涨跌幅区间', '凯莉公式仓位', '胜率']],
         on=['排名', '涨跌幅区间'],
         how='left'
     )
-    
+
     # Define a function to calculate the position size
     def calculate_position_size(row):
         """Calculates the position size based on Kelly Criterion and Win Rate."""
         kelly_position = row['凯莉公式仓位']
         win_rate = row['胜率']
-    
+
         if pd.isna(kelly_position) or kelly_position < 0:
             return 0
         elif win_rate == 1:
             return 0.7
         else:
             return kelly_position
-    
+
     # Apply the function to create the '仓位' column
     merged_df['仓位'] = merged_df.apply(calculate_position_size, axis=1)
-    
+
+    # 去重：确保最终结果中每个涨停日期和股票代码组合只有一条记录
+    merged_df = merged_df.drop_duplicates(subset=['涨停日期', '股票代码'], keep='first')
+
     # Save the merged_df to CSV（保存到templates文件夹）
     output_csv_path = os.path.join(templates_dir, trade_with_cangwei_filename)
     merged_df.to_csv(output_csv_path, index=False, encoding='utf-8-sig')
     print(f"\n仓位建议已保存到: {output_csv_path}")
     print(f"共处理 {len(merged_df)} 条记录")
-    
+
     return True
 
 # 主程序
 def main():
     """主函数"""
     print("=== K线数据获取及分析程序启动 ===")
-    
+
     # 步骤1: 获取K线数据
     print("\n【步骤1】获取K线数据")
     if not final_filtered_df.empty:
         process_stock_batch(final_filtered_df, kline_cache_dir)
     else:
         print("没有过滤后的股票数据可供处理。")
-    
+
     # 确保连接池关闭
     try:
         connection_pool.close_all()
         logger.info("连接池已关闭")
     except Exception as e:
         logger.error(f"关闭连接池时出错: {str(e)}")
-    
+
     # 步骤2: 分析涨停后表现
     print("\n【步骤2】分析涨停后表现")
     if not analyze_trade_performance():
         print("警告：涨停表现分析失败")
-    
+
     # 步骤3: 计算仓位建议
     print("\n【步骤3】计算仓位建议")
     if not calculate_position_suggestions():
         print("警告：仓位建议计算失败")
-    
+
     print("\n=== 所有任务已完成 ===")
     print(f"最终结果文件:")
     print(f"  - 交易结果: {os.path.join(templates_dir, trade_results_filename)}")
