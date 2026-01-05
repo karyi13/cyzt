@@ -92,17 +92,40 @@ def get_stocks(date):
     stocks = []
 
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding='utf-8-sig') as f:  # 使用utf-8-sig处理BOM
             reader = csv.DictReader(f)
             rows = list(reader)
 
         for row in rows:
-            stock_code = str(row['股票代码'])
-            stock_name = row['股票简称']
+            # 处理可能包含BOM的列名
+            stock_code_key = '股票代码'
+            stock_name_key = '股票简称'
+
+            # 检查列名是否包含BOM或其他特殊字符
+            if '股票代码' not in reader.fieldnames:
+                # 尝试找到包含'股票代码'的列名
+                for field in reader.fieldnames:
+                    if '股票代码' in field or field.replace('\ufeff', '').strip() == '股票代码':
+                        stock_code_key = field
+                        break
+
+            if '股票简称' not in reader.fieldnames:
+                # 尝试找到包含'股票简称'的列名
+                for field in reader.fieldnames:
+                    if '股票简称' in field or field.replace('\ufeff', '').strip() == '股票简称':
+                        stock_name_key = field
+                        break
+
+            stock_code = str(row[stock_code_key])
+            stock_name = row[stock_name_key]
 
             # Calculate T+1 Open Performance
-            kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{stock_code}.SZ.csv')
+            # Remove existing .SZ or .SS suffix from stock_code to avoid duplicate suffixes
+            stock_code_clean = stock_code.replace('.SZ', '').replace('.SS', '')
+            kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{stock_code_clean}.SZ.csv')
             t1_open_pct = None
+            t1_open_price = None
+            t2_close_price = None
 
             if os.path.exists(kline_file):
                 try:
@@ -121,21 +144,32 @@ def get_stocks(date):
                     if matched_idx != -1:
                         # Check if T+1 exists
                         if matched_idx + 1 < len(kline_rows):
-                            t_close = float(kline_rows[matched_idx]['收盘'])
-                            t1_open = float(kline_rows[matched_idx+1]['开盘'])
-                            t1_close = float(kline_rows[matched_idx+1]['收盘'])
+                            # Handle potential empty or invalid values
+                            t_close_str = kline_rows[matched_idx]['收盘']
+                            t1_open_str = kline_rows[matched_idx+1]['开盘']
 
-                            if t_close != 0:
-                                t1_open_pct = (t1_open - t_close) / t_close * 100
-                                t1_open_pct = round(t1_open_pct, 2)
+                            if t_close_str and t_close_str != '' and t1_open_str and t1_open_str != '':
+                                try:
+                                    t_close = float(t_close_str)
+                                    t1_open = float(t1_open_str)
+
+                                    if t_close != 0:
+                                        t1_open_pct = (t1_open - t_close) / t_close * 100
+                                        t1_open_pct = round(t1_open_pct, 2)
+
+                                    t1_open_price = t1_open
+                                except (ValueError, TypeError):
+                                    print(f"Invalid data for T+1 calculation for {stock_code}: close={t_close_str}, open={t1_open_str}")
 
                         # Check if T+2 exists for profit calculation
-                        t1_open_price = None
-                        t2_close_price = None
-                        if matched_idx + 1 < len(kline_rows):
-                            t1_open_price = float(kline_rows[matched_idx+1]['开盘'])
                         if matched_idx + 2 < len(kline_rows):
-                            t2_close_price = float(kline_rows[matched_idx+2]['收盘'])
+                            t2_close_str = kline_rows[matched_idx+2]['收盘']
+                            if t2_close_str and t2_close_str != '':
+                                try:
+                                    t2_close_price = float(t2_close_str)
+                                except (ValueError, TypeError):
+                                    print(f"Invalid data for T+2 calculation for {stock_code}: close={t2_close_str}")
+
                 except Exception as e:
                     print(f"Error calculating T+1 for {stock_code}: {e}")
 
@@ -161,7 +195,9 @@ def get_kline(date, code):
     if not os.path.exists(KLINE_CACHE_DIR):
         return jsonify({'error': 'K-line cache directory not found'}), 404
 
-    kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{code}.SZ.csv')
+    # Remove existing .SZ or .SS suffix from code to avoid duplicate suffixes
+    code_clean = code.replace('.SZ', '').replace('.SS', '')
+    kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{code_clean}.SZ.csv')
     if not os.path.exists(kline_file):
         return jsonify({'error': 'K-line data not found'}), 404
 
@@ -176,46 +212,83 @@ def get_kline(date, code):
 
         # Calculate Moving Averages - this requires a bit more work without pandas
         for i, row in enumerate(rows):
-            # Convert values to float for calculation
-            row['收盘'] = float(row['收盘'])
+            # Convert values to float for calculation, handling empty/None values
+            try:
+                row['收盘'] = float(row['收盘']) if row['收盘'] and row['收盘'] != '' else 0.0
+            except (ValueError, TypeError):
+                row['收盘'] = 0.0
 
         # Calculate moving averages - simplified implementation
         for i, row in enumerate(rows):
             # Calculate MA5 for current position
             if i >= 4:
-                ma5_sum = sum(float(r['收盘']) for r in rows[i-4:i+1])
-                row['MA5'] = ma5_sum / 5
+                valid_values = []
+                for j in range(i-4, i+1):
+                    try:
+                        val = float(rows[j]['收盘']) if rows[j]['收盘'] and rows[j]['收盘'] != '' else 0.0
+                        if val > 0:  # Only include valid positive values
+                            valid_values.append(val)
+                    except (ValueError, TypeError):
+                        continue
+                if len(valid_values) == 5:  # Only calculate if all 5 values are valid
+                    row['MA5'] = sum(valid_values) / 5
+                else:
+                    row['MA5'] = None
             else:
                 row['MA5'] = None
 
             # Calculate MA10 for current position
             if i >= 9:
-                ma10_sum = sum(float(r['收盘']) for r in rows[i-9:i+1])
-                row['MA10'] = ma10_sum / 10
+                valid_values = []
+                for j in range(i-9, i+1):
+                    try:
+                        val = float(rows[j]['收盘']) if rows[j]['收盘'] and rows[j]['收盘'] != '' else 0.0
+                        if val > 0:  # Only include valid positive values
+                            valid_values.append(val)
+                    except (ValueError, TypeError):
+                        continue
+                if len(valid_values) == 10:  # Only calculate if all 10 values are valid
+                    row['MA10'] = sum(valid_values) / 10
+                else:
+                    row['MA10'] = None
             else:
                 row['MA10'] = None
 
             # Calculate MA20 for current position
             if i >= 19:
-                ma20_sum = sum(float(r['收盘']) for r in rows[i-19:i+1])
-                row['MA20'] = ma20_sum / 20
+                valid_values = []
+                for j in range(i-19, i+1):
+                    try:
+                        val = float(rows[j]['收盘']) if rows[j]['收盘'] and rows[j]['收盘'] != '' else 0.0
+                        if val > 0:  # Only include valid positive values
+                            valid_values.append(val)
+                    except (ValueError, TypeError):
+                        continue
+                if len(valid_values) == 20:  # Only calculate if all 20 values are valid
+                    row['MA20'] = sum(valid_values) / 20
+                else:
+                    row['MA20'] = None
             else:
                 row['MA20'] = None
 
         # Format for ECharts
         data = []
         for row in rows:
-            data.append({
-                'date': str(row['日期']),
-                'open': float(row['开盘']) if row['开盘'] else None,
-                'close': row['收盘'],  # Already converted to float above
-                'low': float(row['最低']) if row['最低'] else None,
-                'high': float(row['最高']) if row['最高'] else None,
-                'vol': int(float(row['成交量'])) if row['成交量'] else None,
-                'ma5': row['MA5'],
-                'ma10': row['MA10'],
-                'ma20': row['MA20']
-            })
+            try:
+                data.append({
+                    'date': str(row['日期']),
+                    'open': float(row['开盘']) if row['开盘'] and row['开盘'] != '' else None,
+                    'close': float(row['收盘']) if row['收盘'] and row['收盘'] != '' else None,
+                    'low': float(row['最低']) if row['最低'] and row['最低'] != '' else None,
+                    'high': float(row['最高']) if row['最高'] and row['最高'] != '' else None,
+                    'vol': int(float(row['成交量'])) if row['成交量'] and row['成交量'] != '' else None,
+                    'ma5': row['MA5'],
+                    'ma10': row['MA10'],
+                    'ma20': row['MA20']
+                })
+            except (ValueError, TypeError):
+                # Skip rows with invalid data
+                continue
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -354,16 +427,37 @@ def get_last_20_days_data():
                 continue
 
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, 'r', encoding='utf-8-sig') as f:  # 使用utf-8-sig处理BOM
                     reader = csv.DictReader(f)
                     rows = list(reader)
 
                 for row in rows:
-                    stock_code = str(row['股票代码'])
-                    stock_name = row['股票简称']
+                    # 处理可能包含BOM的列名
+                    stock_code_key = '股票代码'
+                    stock_name_key = '股票简称'
+
+                    # 检查列名是否包含BOM或其他特殊字符
+                    if '股票代码' not in reader.fieldnames:
+                        # 尝试找到包含'股票代码'的列名
+                        for field in reader.fieldnames:
+                            if '股票代码' in field or field.replace('\ufeff', '').strip() == '股票代码':
+                                stock_code_key = field
+                                break
+
+                    if '股票简称' not in reader.fieldnames:
+                        # 尝试找到包含'股票简称'的列名
+                        for field in reader.fieldnames:
+                            if '股票简称' in field or field.replace('\ufeff', '').strip() == '股票简称':
+                                stock_name_key = field
+                                break
+
+                    stock_code = str(row[stock_code_key])
+                    stock_name = row[stock_name_key]
 
                     # Calculate T+1 Open Performance
-                    kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{stock_code}.SZ.csv')
+                    # Remove existing .SZ or .SS suffix from stock_code to avoid duplicate suffixes
+                    stock_code_clean = stock_code.replace('.SZ', '').replace('.SS', '')
+                    kline_file = os.path.join(KLINE_CACHE_DIR, f'{date}_{stock_code_clean}.SZ.csv')
                     t1_open_pct = None
 
                     if os.path.exists(kline_file):
@@ -383,13 +477,19 @@ def get_last_20_days_data():
                             if matched_idx != -1:
                                 # Check if T+1 exists
                                 if matched_idx + 1 < len(kline_rows):
-                                    t_close = float(kline_rows[matched_idx]['收盘'])
-                                    t1_open = float(kline_rows[matched_idx+1]['开盘'])
-                                    t1_close = float(kline_rows[matched_idx+1]['收盘'])
+                                    t_close_str = kline_rows[matched_idx]['收盘']
+                                    t1_open_str = kline_rows[matched_idx+1]['开盘']
 
-                                    if t_close != 0:
-                                        t1_open_pct = (t1_open - t_close) / t_close * 100
-                                        t1_open_pct = round(t1_open_pct, 2)
+                                    if t_close_str and t_close_str != '' and t1_open_str and t1_open_str != '':
+                                        try:
+                                            t_close = float(t_close_str)
+                                            t1_open = float(t1_open_str)
+
+                                            if t_close != 0:
+                                                t1_open_pct = (t1_open - t_close) / t_close * 100
+                                                t1_open_pct = round(t1_open_pct, 2)
+                                        except (ValueError, TypeError):
+                                            print(f"Invalid data for T+1 calculation for {stock_code} on {date}: close={t_close_str}, open={t1_open_str}")
                         except Exception as e:
                             print(f"Error calculating T+1 for {stock_code} on {date}: {e}")
 
