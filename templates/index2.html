@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>创业板涨停复盘</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --bg-color: #1a1a1a;
+            --sidebar-bg: #2d2d2d;
+            --card-bg: #333333;
+            --text-color: #e0e0e0;
+            --accent-color: #667eea;
+            --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --danger-color: #ff4d4d;
+            --success-color: #00b894;
+            --border-color: #444;
+        }
+
+        /* Light Mode */
+        :root.light-mode {
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --bg-color: #f8f9fa;
+            --sidebar-bg: #ffffff;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --accent-color: #667eea;
+            --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --danger-color: #ff4d4d;
+            --success-color: #00b894;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--accent-gradient);
+            color: white;
+        }
+
+        .date-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .date-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-bottom: 5px;
+            transition: background-color 0.2s;
+        }
+
+        .date-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .date-item.active {
+            background: var(--accent-gradient);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .top-bar {
+            padding: 15px 20px;
+            background-color: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .update-button {
+            padding: 8px 15px;
+            background: var(--accent-gradient);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .update-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .update-button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+
+        .update-status {
+            font-size: 12px;
+            color: #888;
+            margin-left: 10px;
+        }
+
+        .update-status.success {
+            color: var(--success-color);
+        }
+
+        .update-status.error {
+            color: var(--danger-color);
+        }
+
+        .update-status.running {
+            color: var(--accent-color);
+            animation: pulse 1.5s infinite;
+        }
+
+        .mobile-btn {
+            padding: 8px 15px;
+            background: var(--accent-gradient);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .mobile-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .theme-toggle-btn {
+            padding: 8px 15px;
+            background: var(--accent-gradient);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .theme-toggle-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .toggle-switch input {
+            display: none;
+        }
+
+        .toggle-slider {
+            width: 40px;
+            height: 20px;
+            background-color: #555;
+            border-radius: 20px;
+            position: relative;
+            margin-right: 10px;
+            transition: background-color 0.2s;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.2s;
+        }
+
+        .toggle-switch input:checked+.toggle-slider {
+            background: var(--accent-gradient);
+        }
+
+        .toggle-switch input:checked+.toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        .content-area {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Stock List */
+        .stock-list-panel {
+            width: 300px;
+            background-color: var(--card-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stock-list-header {
+            padding: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .stock-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .stock-card {
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, background-color 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-2px);
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .stock-card.active {
+            border: 2px solid transparent;
+            background: linear-gradient(var(--card-bg), var(--card-bg)) padding-box,
+                        var(--accent-gradient) border-box;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .stock-code {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .stock-name {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .stock-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
+
+        .stock-profit {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            font-size: 0.9em;
+        }
+
+        .profit-label {
+            color: #888;
+        }
+
+        .pct-change {
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .pct-up {
+            color: var(--danger-color);
+        }
+
+        .pct-down {
+            color: var(--success-color);
+        }
+
+        .pct-flat {
+            color: #888;
+        }
+
+        /* Chart Area */
+        .chart-panel {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-color);
+            overflow-y: auto;
+            gap: 20px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 600px;
+            min-height: 500px;
+            border-radius: 8px;
+            background-color: var(--card-bg);
+            padding: 10px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        .chart-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+            display: none;
+        }
+
+        .chart-close-btn:hover {
+            background: rgba(255, 0, 0, 0.5);
+        }
+
+        .multi-mode .chart-container {
+            height: 500px;
+            flex-shrink: 0;
+        }
+
+        .multi-mode .chart-close-btn {
+            display: block;
+        }
+
+        .empty-state {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            color: #666;
+            font-size: 1.2em;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            📅 历史日期
+        </div>
+        <div class="date-list" id="dateList">
+            <!-- Dates will be populated here -->
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="top-bar">
+            <div id="currentDateTitle">请选择日期</div>
+            <div class="controls">
+            <button type="button" id="updateButton" class="update-button">手动更新数据</button>
+            <span id="updateStatus"></span>
+            <button type="button" class="mobile-btn" onclick="window.location.href='/mobile'">手机版</button>
+            <button type="button" class="mobile-btn" onclick="window.location.href='/stock_analysis_enhanced_v2.html'">增强分析</button>
+            <button type="button" class="theme-toggle-btn" id="themeToggle">切换亮色模式</button>
+            <label class="toggle-switch">
+                <input type="checkbox" id="compareModeToggle">
+                <span class="toggle-slider"></span>
+                <span>并列显示 (对比模式)</span>
+            </label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="last20DaysToggle">
+                <span class="toggle-slider"></span>
+                <span>最近20日数据</span>
+            </label>
+        </div>
+        </div>
+
+        <div class="content-area">
+            <div class="stock-list-panel">
+                <div class="stock-list-header">
+                    当日涨停股票 (<span id="stockCount">0</span>)
+                </div>
+                <div class="stock-list" id="stockList">
+                    <div class="empty-state">请选择日期</div>
+                </div>
+            </div>
+
+            <div class="chart-panel" id="chartPanel">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentDate = null;
+        let currentStock = null;
+        let chartInstances = [];
+        let savedVisibleBarCount = 50;
+        let isCompareMode = false;
+        let showLast20Days = false;
+
+        // 加载日期列表
+        function loadDateList() {
+            fetch('/api/dates')
+                .then(response => response.json())
+                .then(dates => {
+                    const dateList = document.getElementById('dateList');
+                    dateList.innerHTML = '';
+                    
+                    dates.forEach(date => {
+                        const dateItem = document.createElement('div');
+                        dateItem.className = 'date-item';
+                        dateItem.textContent = date;
+                        dateItem.dataset.date = date;
+                        
+                        dateItem.addEventListener('click', () => selectDate(date));
+                        dateList.appendChild(dateItem);
+                    });
+                })
+                .catch(error => {
+                    console.error('加载日期列表失败:', error);
+                });
+        }
+
+        // 选择日期
+        function selectDate(date) {
+            currentDate = date;
+            currentStock = null;
+            
+            // 更新日期选择状态
+            document.querySelectorAll('.date-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-date="${date}"]`).classList.add('active');
+            
+            // 更新标题
+            document.getElementById('currentDateTitle').textContent = date;
+            
+            // 加载股票列表
+            loadStockList(date);
+            
+            // 清空图表
+            clearCharts();
+        }
+
+        // 加载股票列表
+        function loadStockList(date) {
+            fetch(`/api/stocks/${date}`)
+                .then(response => response.json())
+                .then(stocks => {
+                    const stockList = document.getElementById('stockList');
+                    
+                    if (stocks.length === 0) {
+                        stockList.innerHTML = '<div class="empty-state" style="height: 200px;">当日无涨停股票</div>';
+                        document.getElementById('stockCount').textContent = '0';
+                        return;
+                    }
+                    
+                    document.getElementById('stockCount').textContent = stocks.length;
+                    stockList.innerHTML = '';
+                    
+                    stocks.forEach(stock => {
+                        const stockCard = document.createElement('div');
+                        stockCard.className = 'stock-card';
+                        stockCard.dataset.code = stock.code;
+                        
+                        // 设置T+1开盘涨跌幅
+                        let pctClass = 'pct-flat';
+                        let pctText = '0%';
+                        let priceText = '';
+                        
+                        if (stock.t1_open_pct !== null) {
+                            pctText = (stock.t1_open_pct > 0 ? '+' : '') + stock.t1_open_pct + '%';
+                            if (stock.t1_open_pct > 0) pctClass = 'pct-up';
+                            else if (stock.t1_open_pct < 0) pctClass = 'pct-down';
+                        }
+                        
+                        if (stock.t1_open_price !== null) {
+                            priceText = stock.t1_open_price.toFixed(2) + '元';
+                        }
+                        
+                        // 计算盈亏比例
+                        let profitPct = 0;
+                        let profitPctText = '';
+                        let profitClass = 'pct-flat';
+                        
+                        if (stock.t1_open_price && stock.t2_close_price) {
+                            profitPct = ((stock.t2_close_price - stock.t1_open_price) / stock.t1_open_price) * 100;
+                            profitPctText = (profitPct > 0 ? '+' : '') + profitPct.toFixed(2) + '%';
+                            if (profitPct > 0) profitClass = 'pct-up';
+                            else if (profitPct < 0) profitClass = 'pct-down';
+                        }
+                        
+                        stockCard.innerHTML = `
+                            <div class="stock-header">
+                                <span class="stock-name">${stock.name}</span>
+                                <span class="stock-code">${stock.code}</span>
+                            </div>
+                            <div class="stock-info">
+                                <span class="pct-change ${pctClass}">${pctText}</span>
+                                <span>${priceText}</span>
+                            </div>
+                            <div class="stock-profit">
+                                <span class="profit-label">盈亏比例:</span>
+                                <span class="pct-change ${profitClass}">${profitPctText}</span>
+                            </div>
+                        `;
+                        
+                        stockCard.addEventListener('click', () => selectStock(stock.code));
+                        stockList.appendChild(stockCard);
+                    });
+                })
+                .catch(error => {
+                    console.error('加载股票列表失败:', error);
+                });
+        }
+
+        // 选择股票
+        function selectStock(code) {
+            currentStock = code;
+            
+            // 更新股票选择状态
+            document.querySelectorAll('.stock-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            document.querySelector(`[data-code="${code}"]`).classList.add('active');
+            
+            // 加载K线图
+            loadKLine(code, currentDate);
+        }
+
+        // 加载K线图
+        function loadKLine(code, date) {
+            if (!isCompareMode) {
+                clearCharts();
+            }
+            
+            // 使用正确的API路径格式：/api/kline/<date>/<code>
+            const url = `/api/kline/${date}/${code}`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('加载K线数据失败:', data.error);
+                        return;
+                    }
+                    
+                    renderChart(data, code);
+                })
+                .catch(error => {
+                    console.error('加载K线数据失败:', error);
+                });
+        }
+
+        // 渲染图表
+        function renderChart(data, code) {
+            const chartPanel = document.getElementById('chartPanel');
+            const chartContainer = document.createElement('div');
+            chartContainer.className = 'chart-container';
+            chartContainer.id = `chart-${code}`;
+            
+            // 添加关闭按钮
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'chart-close-btn';
+            closeBtn.textContent = '×';
+            closeBtn.addEventListener('click', () => closeChart(code));
+            chartContainer.appendChild(closeBtn);
+            
+            chartPanel.appendChild(chartContainer);
+            
+            // 初始化ECharts实例
+            const chartInstance = echarts.init(chartContainer);
+            chartInstances.push({ code, instance: chartInstance });
+            
+            // 准备K线数据
+            let filteredData = data;
+            
+            // 如果选择了最近20天，只显示最近20天的数据
+            if (showLast20Days) {
+                filteredData = data.slice(-20);
+            }
+            
+            const dates = filteredData.map(item => item.date);
+            const klineData = filteredData.map(item => [item.open, item.close, item.low, item.high]);
+            const ma5Data = filteredData.map(item => item.ma5);
+            const ma10Data = filteredData.map(item => item.ma10);
+            const ma20Data = filteredData.map(item => item.ma20);
+            
+            // 配置ECharts选项
+            const option = {
+                title: {
+                    text: `${code} K线图`,
+                    left: 'center',
+                    textStyle: {
+                        color: '#e0e0e0'
+                    }
+                },
+                legend: {
+                    data: ['K线', 'MA5', 'MA10', 'MA20'],
+                    top: 30,
+                    textStyle: {
+                        color: '#e0e0e0'
+                    }
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross'
+                    },
+                    formatter: function(params) {
+                        let result = params[0].axisValue + '<br/>';
+                        params.forEach(param => {
+                            if (param.seriesType === 'candlestick') {
+                                const data = param.data;
+                                result += `开盘: ${data[1]}<br/>`;
+                                result += `收盘: ${data[2]}<br/>`;
+                                result += `最低: ${data[3]}<br/>`;
+                                result += `最高: ${data[4]}<br/>`;
+                            } else if (param.seriesType === 'line' && param.value !== null) {
+                                result += `${param.seriesName}: ${param.value.toFixed(2)}<br/>`;
+                            }
+                        });
+                        return result;
+                    }
+                },
+                grid: {
+                    left: '10%',
+                    right: '10%',
+                    bottom: '15%'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: dates,
+                    axisLabel: {
+                        color: '#888',
+                        rotate: 45
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    scale: true,
+                    axisLabel: {
+                        color: '#888'
+                    },
+                    splitLine: {
+                        lineStyle: {
+                            color: '#444'
+                        }
+                    }
+                },
+                dataZoom: [
+                    {
+                        type: 'inside',
+                        start: dates.length > savedVisibleBarCount ? (100 - (savedVisibleBarCount / dates.length) * 100) : 0,
+                        end: 100
+                    },
+                    {
+                        type: 'slider',
+                        bottom: '5%',
+                        start: dates.length > savedVisibleBarCount ? (100 - (savedVisibleBarCount / dates.length) * 100) : 0,
+                        end: 100
+                    }
+                ],
+                series: [
+                    {
+                        name: 'K线',
+                        type: 'candlestick',
+                        data: klineData,
+                        itemStyle: {
+                            color: '#ff4d4d',
+                            color0: '#00b894',
+                            borderColor: '#ff4d4d',
+                            borderColor0: '#00b894'
+                        }
+                    },
+                    {
+                        name: 'MA5',
+                        type: 'line',
+                        data: ma5Data,
+                        smooth: true,
+                        lineStyle: {
+                            width: 1.5,
+                            color: '#FFA500'
+                        },
+                        showSymbol: false
+                    },
+                    {
+                        name: 'MA10',
+                        type: 'line',
+                        data: ma10Data,
+                        smooth: true,
+                        lineStyle: {
+                            width: 1.5,
+                            color: '#00BFFF'
+                        },
+                        showSymbol: false
+                    },
+                    {
+                        name: 'MA20',
+                        type: 'line',
+                        data: ma20Data,
+                        smooth: true,
+                        lineStyle: {
+                            width: 1.5,
+                            color: '#9370DB'
+                        },
+                        showSymbol: false
+                    }
+                ]
+            };
+            
+            chartInstance.setOption(option);
+            
+            // 监听dataZoom事件
+            chartInstance.on('dataZoom', function(params) {
+                const option = chartInstance.getOption();
+                const start = option.dataZoom[0].start;
+                const end = option.dataZoom[0].end;
+                
+                const currentTotalBars = dates.length;
+                const visiblePercent = end - start;
+                savedVisibleBarCount = Math.round(currentTotalBars * (visiblePercent / 100));
+                
+                if (savedVisibleBarCount < 5) savedVisibleBarCount = 5;
+            });
+        }
+
+        // 清空图表
+        function clearCharts() {
+            chartInstances.forEach(({ instance }) => {
+                instance.dispose();
+            });
+            chartInstances = [];
+            
+            const chartPanel = document.getElementById('chartPanel');
+            chartPanel.innerHTML = '';
+        }
+
+        // 关闭单个图表
+        function closeChart(code) {
+            const chartIndex = chartInstances.findIndex(item => item.code === code);
+            if (chartIndex !== -1) {
+                chartInstances[chartIndex].instance.dispose();
+                chartInstances.splice(chartIndex, 1);
+                
+                const chartContainer = document.getElementById(`chart-${code}`);
+                if (chartContainer) {
+                    chartContainer.remove();
+                }
+                
+                if (chartInstances.length === 0) {
+                    const chartPanel = document.getElementById('chartPanel');
+                    chartPanel.innerHTML = '';
+                }
+            }
+        }
+
+        // 手动更新数据功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const updateButton = document.getElementById('updateButton');
+            const updateStatus = document.getElementById('updateStatus');
+            const compareModeToggle = document.getElementById('compareModeToggle');
+            const last20DaysToggle = document.getElementById('last20DaysToggle');
+
+            // 定期检查更新状态
+            function checkUpdateStatus() {
+                fetch('/api/update/status')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.is_running) {
+                            updateButton.disabled = true;
+                            updateStatus.textContent = '数据更新中...';
+                            updateStatus.className = 'update-status running';
+                        } else {
+                            updateButton.disabled = false;
+                            if (data.last_status === 'success') {
+                                updateStatus.textContent = `上次更新成功: ${data.last_end_time}`;
+                                updateStatus.className = 'update-status success';
+                            } else if (data.last_status === 'failed' || data.last_status === 'error') {
+                                updateStatus.textContent = `更新失败: ${data.error}`;
+                                updateStatus.className = 'update-status error';
+                            } else {
+                                updateStatus.textContent = `上次更新: ${data.last_end_time || '从未更新'}`;
+                                updateStatus.className = 'update-status';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取更新状态失败:', error);
+                    });
+            }
+
+            // 点击更新按钮事件
+            updateButton.addEventListener('click', function() {
+                fetch('/api/update/start', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateStatus.textContent = '数据更新已开始...';
+                        updateStatus.className = 'update-status running';
+                        updateButton.disabled = true;
+                        
+                        const interval = setInterval(() => {
+                            fetch('/api/update/status')
+                                .then(response => response.json())
+                                .then(statusData => {
+                                    if (!statusData.is_running) {
+                                        clearInterval(interval);
+                                        updateButton.disabled = false;
+                                        
+                                        if (statusData.last_status === 'success') {
+                                            updateStatus.textContent = `更新成功: ${statusData.last_end_time}`;
+                                            updateStatus.className = 'update-status success';
+                                            loadDateList();
+                                        } else {
+                                            updateStatus.textContent = `更新失败: ${statusData.error}`;
+                                            updateStatus.className = 'update-status error';
+                                        }
+                                    }
+                                });
+                        }, 3000);
+                    } else {
+                        updateStatus.textContent = data.message;
+                        updateStatus.className = 'update-status error';
+                    }
+                })
+                .catch(error => {
+                    console.error('启动更新失败:', error);
+                    updateStatus.textContent = '启动更新失败';
+                    updateStatus.className = 'update-status error';
+                });
+            });
+
+            // 对比模式切换
+            compareModeToggle.addEventListener('change', function() {
+                isCompareMode = this.checked;
+                document.getElementById('chartPanel').classList.toggle('multi-mode', isCompareMode);
+                
+                if (!isCompareMode) {
+                    if (currentStock) {
+                        clearCharts();
+                        loadKLine(currentStock, currentDate);
+                    }
+                }
+            });
+
+            // 最近20日数据切换
+            last20DaysToggle.addEventListener('change', function() {
+                showLast20Days = this.checked;
+                if (currentStock) {
+                    if (!isCompareMode) {
+                        clearCharts();
+                    }
+                    loadKLine(currentStock, currentDate);
+                }
+            });
+
+            // 初始加载日期列表
+            loadDateList();
+            
+            // 初始加载更新状态
+            checkUpdateStatus();
+            
+            // 每1分钟自动检查一次更新状态
+            setInterval(checkUpdateStatus, 60000);
+        });
+        
+        // 主题切换功能
+        const themeToggle = document.getElementById('themeToggle');
+        const root = document.documentElement;
+
+        // 更新图表颜色函数
+        function updateChartsColors() {
+            const isLightMode = root.classList.contains('light-mode');
+            
+            // 遍历所有图表实例并更新颜色
+            chartInstances.forEach(({ instance }) => {
+                if (instance) {
+                    instance.setOption({
+                        title: {
+                            textStyle: {
+                                color: isLightMode ? '#333333' : '#e0e0e0'
+                            }
+                        },
+                        xAxis: {
+                            axisLabel: {
+                                color: isLightMode ? '#666666' : '#888888'
+                            }
+                        },
+                        yAxis: {
+                            axisLabel: {
+                                color: isLightMode ? '#666666' : '#888888'
+                            },
+                            splitLine: {
+                                lineStyle: {
+                                    color: isLightMode ? '#dddddd' : '#444444'
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        
+        // 检查本地存储中的主题偏好
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            root.classList.add('light-mode');
+            themeToggle.textContent = '切换暗色模式';
+            // 页面加载时更新图表颜色
+            updateChartsColors();
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            if (root.classList.contains('light-mode')) {
+                root.classList.remove('light-mode');
+                themeToggle.textContent = '切换亮色模式';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                root.classList.add('light-mode');
+                themeToggle.textContent = '切换暗色模式';
+                localStorage.setItem('theme', 'light');
+            }
+            // 切换主题时更新图表颜色
+            updateChartsColors();
+        });
+    </script>
+</body>
+</html>

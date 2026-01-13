@@ -3,41 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>创业板涨停复盘</title>
+    <title>创业板涨停复盘 - 新版</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
         :root {
-            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --bg-color: #1a1a1a;
-            --sidebar-bg: #2d2d2d;
-            --card-bg: #333333;
-            --text-color: #e0e0e0;
-            --accent-color: #667eea;
-            --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --danger-color: #ff4d4d;
-            --success-color: #00b894;
-            --border-color: #444;
+            /* Softer color palette */
+            --bg-primary: #f8f9fa;
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --text-primary: #333333;
+            --text-secondary: #666666;
+            --accent-primary: #6c757d;
+            --accent-secondary: #adb5bd;
+            --border-color: #e9ecef;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --info-color: #17a2b8;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            --transition: all 0.3s ease;
         }
 
-        /* Light Mode */
-        :root.light-mode {
-            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --bg-color: #f8f9fa;
-            --sidebar-bg: #ffffff;
-            --card-bg: #ffffff;
-            --text-color: #333333;
-            --accent-color: #667eea;
-            --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --danger-color: #ff4d4d;
-            --success-color: #00b894;
-            --border-color: #e0e0e0;
+        /* Dark Mode */
+        :root.dark-mode {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: #161b22;
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --accent-primary: #6c757d;
+            --accent-secondary: #5a6268;
+            --border-color: #30363d;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            margin: 0;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        .app-container {
             display: flex;
             height: 100vh;
             overflow: hidden;
@@ -45,44 +60,57 @@
 
         /* Sidebar */
         .sidebar {
-            width: 250px;
-            background-color: var(--sidebar-bg);
-            border-right: 1px solid var(--border-color);
+            width: 260px;
+            background-color: var(--bg-secondary);
             display: flex;
             flex-direction: column;
+            transition: var(--transition);
+            box-shadow: var(--shadow);
+            z-index: 10;
+            border-right: none;
         }
 
         .sidebar-header {
             padding: 20px;
             font-size: 1.2rem;
-            font-weight: bold;
-            border-bottom: 1px solid var(--border-color);
-            background: var(--accent-gradient);
-            color: white;
+            font-weight: 600;
+            color: var(--text-primary);
+            background: linear-gradient(to right, #f8f9fa, #e9ecef);
+        }
+
+        .dark-mode .sidebar-header {
+            background: linear-gradient(to right, #2d2d2d, #3a3a3a);
         }
 
         .date-list {
             flex: 1;
             overflow-y: auto;
-            padding: 10px;
+            padding: 15px;
         }
 
         .date-item {
-            padding: 10px 15px;
+            padding: 12px 15px;
             cursor: pointer;
-            border-radius: 5px;
-            margin-bottom: 5px;
-            transition: background-color 0.2s;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            transition: var(--transition);
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            background-color: var(--bg-card);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
         }
 
         .date-item:hover {
-            background-color: rgba(255, 255, 255, 0.1);
+            background-color: rgba(108, 117, 125, 0.1);
+            color: var(--text-primary);
         }
 
         .date-item.active {
-            background: var(--accent-gradient);
-            color: white;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            background-color: rgba(108, 117, 125, 0.15);
+            color: var(--text-primary);
+            border: 1px solid var(--accent-secondary);
+            font-weight: 500;
         }
 
         /* Main Content */
@@ -95,46 +123,73 @@
 
         .top-bar {
             padding: 15px 20px;
-            background-color: var(--sidebar-bg);
-            border-bottom: 1px solid var(--border-color);
+            background-color: var(--bg-secondary);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: var(--shadow);
+            border-bottom: none;
+        }
+
+        .top-bar-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
         }
 
         .controls {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
             flex-wrap: wrap;
         }
 
-        .update-button {
-            padding: 8px 15px;
-            background: var(--accent-gradient);
-            color: white;
+        .btn {
+            padding: 8px 16px;
             border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
         }
 
-        .update-button:hover:not(:disabled) {
+        .btn-primary {
+            background: linear-gradient(to right, #6c757d, #5a6268);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(to right, #5a6268, #495057);
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
         }
 
-        .update-button:disabled {
-            background-color: #555;
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .btn-outline:hover:not(:disabled) {
+            background-color: rgba(108, 117, 125, 0.1);
+            color: var(--text-primary);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
             cursor: not-allowed;
         }
 
         .update-status {
-            font-size: 12px;
-            color: #888;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
             margin-left: 10px;
+            min-width: 120px;
         }
 
         .update-status.success {
@@ -146,88 +201,67 @@
         }
 
         .update-status.running {
-            color: var(--accent-color);
+            color: var(--warning-color);
             animation: pulse 1.5s infinite;
         }
 
-        .mobile-btn {
-            padding: 8px 15px;
-            background: var(--accent-gradient);
-            color: white;
-            border: none;
-            border-radius: 5px;
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 22px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
             cursor: pointer;
-            font-size: 14px;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: var(--transition);
+            border-radius: 22px;
         }
 
-        .mobile-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: var(--transition);
+            border-radius: 50%;
         }
 
-        .theme-toggle-btn {
-            padding: 8px 15px;
-            background: var(--accent-gradient);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        input:checked + .toggle-slider {
+            background: linear-gradient(to right, #6c757d, #5a6268);
         }
 
-        .theme-toggle-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        input:checked + .toggle-slider:before {
+            transform: translateX(22px);
         }
 
         @keyframes pulse {
             0% { opacity: 0.6; }
             50% { opacity: 1; }
             100% { opacity: 0.6; }
-        }
-
-        .toggle-switch {
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-        }
-
-        .toggle-switch input {
-            display: none;
-        }
-
-        .toggle-slider {
-            width: 40px;
-            height: 20px;
-            background-color: #555;
-            border-radius: 20px;
-            position: relative;
-            margin-right: 10px;
-            transition: background-color 0.2s;
-        }
-
-        .toggle-slider::before {
-            content: '';
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            background-color: white;
-            border-radius: 50%;
-            top: 2px;
-            left: 2px;
-            transition: transform 0.2s;
-        }
-
-        .toggle-switch input:checked+.toggle-slider {
-            background: var(--accent-gradient);
-        }
-
-        .toggle-switch input:checked+.toggle-slider::before {
-            transform: translateX(20px);
         }
 
         .content-area {
@@ -238,61 +272,136 @@
 
         /* Stock List */
         .stock-list-panel {
-            width: 300px;
-            background-color: var(--card-bg);
-            border-right: 1px solid var(--border-color);
+            width: 320px;
+            background-color: var(--bg-secondary);
             display: flex;
             flex-direction: column;
+            transition: var(--transition);
+            border-right: none;
         }
 
         .stock-list-header {
-            padding: 15px;
-            font-weight: bold;
+            padding: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
             border-bottom: 1px solid var(--border-color);
+            background-color: var(--bg-card);
         }
 
         .stock-list {
             flex: 1;
             overflow-y: auto;
-            padding: 10px;
+            padding: 15px;
         }
 
         .stock-card {
-            background-color: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            margin-bottom: 10px;
+            background-color: var(--bg-card);
+            padding: 16px;
+            margin-bottom: 12px;
             border-radius: 8px;
             cursor: pointer;
-            transition: transform 0.2s, background-color 0.2s;
-            border: 1px solid transparent;
+            transition: var(--transition);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
         }
 
         .stock-card:hover {
-            transform: translateY(-2px);
-            background-color: rgba(255, 255, 255, 0.1);
+            transform: translateY(-3px);
+            border-color: var(--accent-secondary);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
         }
 
         .stock-card.active {
-            border: 2px solid transparent;
-            background: linear-gradient(var(--card-bg), var(--card-bg)) padding-box,
-                        var(--accent-gradient) border-box;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            border-color: #6c757d;
+            background: linear-gradient(to bottom right, #f8f9fa, #e9ecef);
+        }
+
+        .dark-mode .stock-card.active {
+            background: linear-gradient(to bottom right, #3a3a3a, #2d2d2d);
         }
 
         .stock-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 5px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .stock-code {
-            color: #888;
-            font-size: 0.9em;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
         }
 
         .stock-name {
-            font-weight: bold;
-            font-size: 1.1em;
+            font-weight: 600;
+            font-size: 1.05rem;
+            color: var(--text-primary);
+            flex: 1;
+        }
+
+        .compare-checkbox-container {
+            display: none;
+            margin-left: 10px;
+        }
+
+        .stock-card:hover .compare-checkbox-container {
+            display: block;
+        }
+
+        .compare-checkbox {
+            position: relative;
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+        }
+
+        .compare-input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .checkmark {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 18px;
+            width: 18px;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .compare-input:checked ~ .checkmark {
+            background-color: #6c757d;
+            border-color: #6c757d;
+        }
+
+        .checkmark:after {
+            content: "";
+            position: absolute;
+            display: none;
+        }
+
+        .compare-input:checked ~ .checkmark:after {
+            display: block;
+        }
+
+        .compare-checkbox .checkmark:after {
+            left: 6px;
+            top: 2px;
+            width: 6px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
         }
 
         .stock-info {
@@ -300,36 +409,98 @@
             justify-content: space-between;
             align-items: center;
             margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--border-color);
         }
 
-        .stock-profit {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .stock-t1-performance {
             margin-top: 8px;
-            font-size: 0.9em;
+            padding-top: 8px;
+            border-top: 1px dashed var(--border-color);
         }
 
-        .profit-label {
-            color: #888;
+        .performance-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .stock-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .stock-price {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .profit-micro-progress {
+            margin-top: 12px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--border-color);
+        }
+
+        .progress-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: var(--bg-secondary);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            min-width: 2%;
+        }
+
+        .progress-value {
+            font-size: 0.8rem;
+            text-align: right;
+            font-weight: 500;
         }
 
         .pct-change {
-            font-weight: bold;
-            padding: 2px 6px;
+            font-weight: 600;
+            padding: 3px 8px;
             border-radius: 4px;
+            font-size: 0.9rem;
         }
 
         .pct-up {
             color: var(--danger-color);
+            background-color: rgba(220, 53, 69, 0.1);
         }
 
         .pct-down {
             color: var(--success-color);
+            background-color: rgba(40, 167, 69, 0.1);
         }
 
         .pct-flat {
-            color: #888;
+            color: var(--text-secondary);
+            background-color: rgba(108, 117, 125, 0.1);
         }
 
         /* Chart Area */
@@ -338,57 +509,219 @@
             padding: 20px;
             display: flex;
             flex-direction: column;
-            background-color: var(--bg-color);
+            background-color: var(--bg-primary);
             overflow-y: auto;
             gap: 20px;
         }
 
         .chart-container {
             width: 100%;
-            height: 600px;
-            min-height: 500px;
-            border-radius: 8px;
-            background-color: var(--card-bg);
-            padding: 10px;
+            height: 50vh;
+            min-height: 450px;
+            border-radius: 12px;
+            background-color: var(--bg-card);
+            padding: 15px;
             box-sizing: border-box;
             position: relative;
+            box-shadow: var(--shadow);
+            border: none;
         }
 
         .chart-close-btn {
             position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(255, 255, 255, 0.1);
+            top: 12px;
+            right: 12px;
+            background: rgba(108, 117, 125, 0.2);
             border: none;
-            color: white;
-            width: 24px;
-            height: 24px;
+            color: var(--text-primary);
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
             cursor: pointer;
             z-index: 10;
             display: none;
+            transition: var(--transition);
         }
 
         .chart-close-btn:hover {
-            background: rgba(255, 0, 0, 0.5);
+            background: rgba(220, 53, 69, 0.8);
+            color: white;
+        }
+
+        .reset-zoom-btn {
+            position: absolute;
+            top: 12px;
+            right: 48px;
+            background: rgba(108, 117, 125, 0.2);
+            border: none;
+            color: var(--text-primary);
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+            display: none;
+            transition: var(--transition);
+            font-size: 14px;
+        }
+
+        .reset-zoom-btn:hover {
+            background: rgba(108, 117, 125, 0.5);
         }
 
         .multi-mode .chart-container {
-            height: 500px;
+            height: 450px;
             flex-shrink: 0;
         }
 
-        .multi-mode .chart-close-btn {
+        .multi-mode .chart-close-btn,
+        .multi-mode .reset-zoom-btn {
             display: block;
         }
 
         .empty-state {
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100%;
-            color: #666;
-            font-size: 1.2em;
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            text-align: center;
+        }
+
+        .empty-state-icon {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(108, 117, 125, 0.2);
+            border-top: 4px solid var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 环形进度条样式 */
+        .circular-progress {
+            position: relative;
+            width: 40px;
+            height: 40px;
+        }
+
+        .circular-progress .progress-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .circular-progress svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .circular-progress circle {
+            fill: none;
+            stroke-width: 4;
+        }
+
+        .circular-progress .progress-background {
+            stroke: rgba(108, 117, 125, 0.2);
+        }
+
+        .circular-progress .progress-bar {
+            stroke: var(--accent-primary);
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.3s ease;
+        }
+
+        /* Mobile Bottom Tabs */
+        .mobile-tabs {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background-color: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            z-index: 1000;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .mobile-tab {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            transition: var(--transition);
+        }
+
+        .mobile-tab.active {
+            color: var(--accent-primary);
+        }
+
+        .mobile-tab i {
+            font-size: 1.2rem;
+            margin-bottom: 4px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .app-container {
+                height: calc(100vh - 60px); /* Account for tab bar */
+            }
+
+            .sidebar,
+            .stock-list-panel {
+                display: none;
+            }
+
+            .mobile-tabs {
+                display: flex;
+            }
+
+            .content-area {
+                flex-direction: column;
+            }
+
+            .chart-panel {
+                flex: 1;
+                padding: 10px;
+            }
+
+            .chart-container {
+                height: 50vh;
+            }
+
+            /* Show specific panel based on active tab */
+            .mobile-tab-content {
+                display: none;
+                height: 100%;
+            }
+
+            .mobile-tab-content.active {
+                display: block;
+            }
         }
 
         /* Scrollbar */
@@ -397,62 +730,100 @@
         }
 
         ::-webkit-scrollbar-track {
-            background: var(--bg-color);
+            background: var(--bg-primary);
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #555;
+            background: var(--accent-secondary);
             border-radius: 4px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: #777;
+            background: var(--accent-primary);
         }
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="sidebar-header">
-            📅 历史日期
-        </div>
-        <div class="date-list" id="dateList">
-            <!-- Dates will be populated here -->
-        </div>
-    </div>
-
-    <div class="main-content">
-        <div class="top-bar">
-            <div id="currentDateTitle">请选择日期</div>
-            <div class="controls">
-            <button type="button" id="updateButton" class="update-button">手动更新数据</button>
-            <span id="updateStatus"></span>
-            <button type="button" class="mobile-btn" onclick="window.location.href='/mobile'">手机版</button>
-            <button type="button" class="mobile-btn" onclick="window.location.href='/stock_analysis_enhanced_v2.html'">增强分析</button>
-            <button type="button" class="theme-toggle-btn" id="themeToggle">切换亮色模式</button>
-            <label class="toggle-switch">
-                <input type="checkbox" id="compareModeToggle">
-                <span class="toggle-slider"></span>
-                <span>并列显示 (对比模式)</span>
-            </label>
-            <label class="toggle-switch">
-                <input type="checkbox" id="last20DaysToggle">
-                <span class="toggle-slider"></span>
-                <span>最近20日数据</span>
-            </label>
-        </div>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                📅 历史日期
+            </div>
+            <div class="date-list" id="dateList">
+                <!-- Dates will be populated here -->
+            </div>
         </div>
 
-        <div class="content-area">
-            <div class="stock-list-panel">
-                <div class="stock-list-header">
-                    当日涨停股票 (<span id="stockCount">0</span>)
-                </div>
-                <div class="stock-list" id="stockList">
-                    <div class="empty-state">请选择日期</div>
+        <div class="main-content">
+            <div class="top-bar">
+                <div class="top-bar-title" id="currentDateTitle">请选择日期</div>
+                <div class="controls">
+                    <button type="button" id="updateButton" class="btn btn-primary">手动更新数据</button>
+                    <span id="updateStatus" class="update-status">
+                        <div class="circular-progress" id="updateProgress" style="display: none;">
+                            <svg>
+                                <circle class="progress-background" cx="20" cy="20" r="16"></circle>
+                                <circle class="progress-bar" cx="20" cy="20" r="16" stroke-dasharray="100" stroke-dashoffset="100"></circle>
+                            </svg>
+                            <div class="progress-value">0%</div>
+                        </div>
+                    </span>
+                    <button type="button" class="btn btn-outline" onclick="window.location.href='/mobile'">手机版</button>
+                    <button type="button" class="btn btn-outline" onclick="window.location.href='/stock_analysis_enhanced_v2.html'">增强分析</button>
+                    <button type="button" class="btn btn-outline" id="themeToggle">切换暗色模式</button>
+                    <div class="toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="compareModeToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span>对比模式</span>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="last20DaysToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span>最近20日</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="chart-panel" id="chartPanel">
+            <div class="content-area">
+                <div class="stock-list-panel">
+                    <div class="stock-list-header">
+                        当日涨停股票 (<span id="stockCount">0</span>)
+                    </div>
+                    <div class="stock-list" id="stockList">
+                        <div class="empty-state">
+                            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M9.5 9.5L12 12L14.5 9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M12 16V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            <span>请选择日期</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-panel" id="chartPanel">
+                    <div class="empty-state">请选择股票查看K线图</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Bottom Tabs -->
+        <div class="mobile-tabs">
+            <div class="mobile-tab active" data-tab="dates">
+                <i>📅</i>
+                <span>日期</span>
+            </div>
+            <div class="mobile-tab" data-tab="stocks">
+                <i>📈</i>
+                <span>股票</span>
+            </div>
+            <div class="mobile-tab" data-tab="charts">
+                <i>📊</i>
+                <span>图表</span>
             </div>
         </div>
     </div>
@@ -472,13 +843,16 @@
                 .then(dates => {
                     const dateList = document.getElementById('dateList');
                     dateList.innerHTML = '';
-                    
-                    dates.forEach(date => {
+
+                    // 按时间倒序排序（最新的在前）
+                    const sortedDates = dates.slice().sort((a, b) => new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00'));
+
+                    sortedDates.forEach(date => {
                         const dateItem = document.createElement('div');
                         dateItem.className = 'date-item';
                         dateItem.textContent = date;
                         dateItem.dataset.date = date;
-                        
+
                         dateItem.addEventListener('click', () => selectDate(date));
                         dateList.appendChild(dateItem);
                     });
@@ -488,25 +862,79 @@
                 });
         }
 
+        // 渲染日期组
+        function renderDateGroup(groupId, dates) {
+            const groupElement = document.getElementById(groupId);
+            groupElement.innerHTML = '';
+
+            dates.forEach(date => {
+                const dateItem = document.createElement('div');
+                dateItem.className = 'date-item';
+                dateItem.textContent = date;
+                dateItem.dataset.date = date;
+
+                dateItem.addEventListener('click', () => selectDate(date));
+                groupElement.appendChild(dateItem);
+            });
+        }
+
+
+        // 移动端底部Tab切换
+        function initMobileTabs() {
+            const mobileTabs = document.querySelectorAll('.mobile-tab');
+            mobileTabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabType = this.dataset.tab;
+
+                    // 更新激活状态
+                    mobileTabs.forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // 根据tab类型显示对应内容
+                    switch(tabType) {
+                        case 'dates':
+                            // 显示日期选择器
+                            document.querySelector('.sidebar').style.display = 'flex';
+                            document.querySelector('.stock-list-panel').style.display = 'none';
+                            document.querySelector('.chart-panel').style.display = 'none';
+                            break;
+                        case 'stocks':
+                            // 显示股票列表
+                            document.querySelector('.sidebar').style.display = 'none';
+                            document.querySelector('.stock-list-panel').style.display = 'flex';
+                            document.querySelector('.chart-panel').style.display = 'none';
+                            break;
+                        case 'charts':
+                            // 显示图表
+                            document.querySelector('.sidebar').style.display = 'none';
+                            document.querySelector('.stock-list-panel').style.display = 'none';
+                            document.querySelector('.chart-panel').style.display = 'flex';
+                            break;
+                    }
+                });
+            });
+        }
+
         // 选择日期
         function selectDate(date) {
             currentDate = date;
             currentStock = null;
-            
+
             // 更新日期选择状态
             document.querySelectorAll('.date-item').forEach(item => {
                 item.classList.remove('active');
             });
             document.querySelector(`[data-date="${date}"]`).classList.add('active');
-            
+
             // 更新标题
             document.getElementById('currentDateTitle').textContent = date;
-            
+
             // 加载股票列表
             loadStockList(date);
-            
+
             // 清空图表
             clearCharts();
+            document.getElementById('chartPanel').innerHTML = '<div class="empty-state">请选择股票查看K线图</div>';
         }
 
         // 加载股票列表
@@ -515,66 +943,87 @@
                 .then(response => response.json())
                 .then(stocks => {
                     const stockList = document.getElementById('stockList');
-                    
+
                     if (stocks.length === 0) {
                         stockList.innerHTML = '<div class="empty-state" style="height: 200px;">当日无涨停股票</div>';
                         document.getElementById('stockCount').textContent = '0';
                         return;
                     }
-                    
+
                     document.getElementById('stockCount').textContent = stocks.length;
                     stockList.innerHTML = '';
-                    
+
                     stocks.forEach(stock => {
                         const stockCard = document.createElement('div');
                         stockCard.className = 'stock-card';
                         stockCard.dataset.code = stock.code;
-                        
+
                         // 设置T+1开盘涨跌幅
                         let pctClass = 'pct-flat';
                         let pctText = '0%';
                         let priceText = '';
-                        
+
                         if (stock.t1_open_pct !== null) {
                             pctText = (stock.t1_open_pct > 0 ? '+' : '') + stock.t1_open_pct + '%';
                             if (stock.t1_open_pct > 0) pctClass = 'pct-up';
                             else if (stock.t1_open_pct < 0) pctClass = 'pct-down';
                         }
-                        
+
                         if (stock.t1_open_price !== null) {
                             priceText = stock.t1_open_price.toFixed(2) + '元';
                         }
-                        
+
                         // 计算盈亏比例
                         let profitPct = 0;
                         let profitPctText = '';
                         let profitClass = 'pct-flat';
-                        
+
                         if (stock.t1_open_price && stock.t2_close_price) {
                             profitPct = ((stock.t2_close_price - stock.t1_open_price) / stock.t1_open_price) * 100;
                             profitPctText = (profitPct > 0 ? '+' : '') + profitPct.toFixed(2) + '%';
                             if (profitPct > 0) profitClass = 'pct-up';
                             else if (profitPct < 0) profitClass = 'pct-down';
                         }
-                        
+
                         stockCard.innerHTML = `
                             <div class="stock-header">
                                 <span class="stock-name">${stock.name}</span>
                                 <span class="stock-code">${stock.code}</span>
+                                <div class="compare-checkbox-container">
+                                    <label class="compare-checkbox">
+                                        <input type="checkbox" class="compare-input" data-code="${stock.code}">
+                                        <span class="checkmark"></span>
+                                    </label>
+                                </div>
                             </div>
-                            <div class="stock-info">
-                                <span class="pct-change ${pctClass}">${pctText}</span>
-                                <span>${priceText}</span>
+                            <div class="stock-t1-performance">
+                                <span class="performance-label">涨停次日表现</span>
                             </div>
-                            <div class="stock-profit">
-                                <span class="profit-label">盈亏比例:</span>
-                                <span class="pct-change ${profitClass}">${profitPctText}</span>
+                            <div class="stock-info-grid">
+                                <div class="info-item">
+                                    <div class="info-label">涨幅</div>
+                                    <div class="pct-change ${pctClass}">${pctText}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">价格</div>
+                                    <div class="stock-price">${priceText}</div>
+                                </div>
+                            </div>
+                            <div class="profit-micro-progress">
+                                <div class="progress-label">盈亏比例</div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${Math.abs(profitPct)}%; background: ${profitPct >= 0 ? 'linear-gradient(to right, #dc3545, #fd7e14)' : 'linear-gradient(to right, #28a745, #20c997)'}"></div>
+                                </div>
+                                <div class="progress-value ${profitClass}">${profitPctText}</div>
                             </div>
                         `;
-                        
+
                         stockCard.addEventListener('click', () => selectStock(stock.code));
                         stockList.appendChild(stockCard);
                     });
+
+                    // 初始化多选对比功能
+                    setTimeout(initCompareSelection, 100);
                 })
                 .catch(error => {
                     console.error('加载股票列表失败:', error);
@@ -584,15 +1033,55 @@
         // 选择股票
         function selectStock(code) {
             currentStock = code;
-            
+
             // 更新股票选择状态
             document.querySelectorAll('.stock-card').forEach(card => {
                 card.classList.remove('active');
             });
             document.querySelector(`[data-code="${code}"]`).classList.add('active');
-            
+
             // 加载K线图
             loadKLine(code, currentDate);
+        }
+
+        // 多选对比功能
+        function initCompareSelection() {
+            const compareInputs = document.querySelectorAll('.compare-input');
+            compareInputs.forEach(input => {
+                input.addEventListener('change', function() {
+                    const code = this.dataset.code;
+                    if (this.checked) {
+                        // 如果对比模式未开启，先开启对比模式
+                        if (!isCompareMode) {
+                            document.getElementById('compareModeToggle').checked = true;
+                            isCompareMode = true;
+                            document.getElementById('chartPanel').classList.add('multi-mode');
+                        }
+                        // 加载选中股票的K线图
+                        loadKLine(code, currentDate);
+                    } else {
+                        // 从图表中移除股票
+                        closeChart(code);
+                    }
+                });
+            });
+        }
+
+        // 批量加载选中股票
+        function loadSelectedStocks() {
+            const selectedInputs = document.querySelectorAll('.compare-input:checked');
+            selectedInputs.forEach(input => {
+                const code = input.dataset.code;
+                loadKLine(code, currentDate);
+            });
+        }
+
+        // 清除所有选择
+        function clearAllSelections() {
+            const compareInputs = document.querySelectorAll('.compare-input');
+            compareInputs.forEach(input => {
+                input.checked = false;
+            });
         }
 
         // 加载K线图
@@ -600,10 +1089,10 @@
             if (!isCompareMode) {
                 clearCharts();
             }
-            
+
             // 使用正确的API路径格式：/api/kline/<date>/<code>
             const url = `/api/kline/${date}/${code}`;
-            
+
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
@@ -611,7 +1100,7 @@
                         console.error('加载K线数据失败:', data.error);
                         return;
                     }
-                    
+
                     renderChart(data, code);
                 })
                 .catch(error => {
@@ -622,51 +1111,65 @@
         // 渲染图表
         function renderChart(data, code) {
             const chartPanel = document.getElementById('chartPanel');
+            
+            // Remove empty state if it exists
+            if (chartPanel.querySelector('.empty-state')) {
+                chartPanel.innerHTML = '';
+            }
+
             const chartContainer = document.createElement('div');
             chartContainer.className = 'chart-container';
             chartContainer.id = `chart-${code}`;
-            
+
             // 添加关闭按钮
             const closeBtn = document.createElement('button');
             closeBtn.className = 'chart-close-btn';
             closeBtn.textContent = '×';
             closeBtn.addEventListener('click', () => closeChart(code));
             chartContainer.appendChild(closeBtn);
-            
+
             chartPanel.appendChild(chartContainer);
-            
+
+            // 添加复位缩放按钮
+            const resetBtn = document.createElement('button');
+            resetBtn.className = 'reset-zoom-btn';
+            resetBtn.innerHTML = '↺';
+            resetBtn.title = '复位缩放';
+            resetBtn.addEventListener('click', () => resetChartZoom(chartInstance, dates));
+            chartContainer.appendChild(resetBtn);
+
             // 初始化ECharts实例
             const chartInstance = echarts.init(chartContainer);
             chartInstances.push({ code, instance: chartInstance });
-            
+
             // 准备K线数据
             let filteredData = data;
-            
+
             // 如果选择了最近20天，只显示最近20天的数据
             if (showLast20Days) {
                 filteredData = data.slice(-20);
             }
-            
+
             const dates = filteredData.map(item => item.date);
             const klineData = filteredData.map(item => [item.open, item.close, item.low, item.high]);
             const ma5Data = filteredData.map(item => item.ma5);
             const ma10Data = filteredData.map(item => item.ma10);
             const ma20Data = filteredData.map(item => item.ma20);
-            
+
             // 配置ECharts选项
             const option = {
                 title: {
                     text: `${code} K线图`,
                     left: 'center',
                     textStyle: {
-                        color: '#e0e0e0'
+                        color: document.documentElement.classList.contains('dark-mode') ? '#e0e0e0' : '#333333'
                     }
                 },
                 legend: {
                     data: ['K线', 'MA5', 'MA10', 'MA20'],
                     top: 30,
                     textStyle: {
-                        color: '#e0e0e0'
+                        color: document.documentElement.classList.contains('dark-mode') ? '#e0e0e0' : '#333333'
                     }
                 },
                 tooltip: {
@@ -699,7 +1202,7 @@
                     type: 'category',
                     data: dates,
                     axisLabel: {
-                        color: '#888',
+                        color: document.documentElement.classList.contains('dark-mode') ? '#b0b0b0' : '#666666',
                         rotate: 45
                     }
                 },
@@ -707,11 +1210,11 @@
                     type: 'value',
                     scale: true,
                     axisLabel: {
-                        color: '#888'
+                        color: document.documentElement.classList.contains('dark-mode') ? '#b0b0b0' : '#666666'
                     },
                     splitLine: {
                         lineStyle: {
-                            color: '#444'
+                            color: document.documentElement.classList.contains('dark-mode') ? '#444' : '#e9ecef'
                         }
                     }
                 },
@@ -734,10 +1237,10 @@
                         type: 'candlestick',
                         data: klineData,
                         itemStyle: {
-                            color: '#ff4d4d',
-                            color0: '#00b894',
-                            borderColor: '#ff4d4d',
-                            borderColor0: '#00b894'
+                            color: '#ff5252',  // 高对比红色 - 阴线
+                            color0: '#00c853',  // 高对比绿色 - 阳线
+                            borderColor: '#ff5252',
+                            borderColor0: '#00c853'
                         }
                     },
                     {
@@ -747,9 +1250,11 @@
                         smooth: true,
                         lineStyle: {
                             width: 1.5,
-                            color: '#FFA500'
+                            color: '#fd7e14'  // 橙色 - 色盲友好
                         },
-                        showSymbol: false
+                        showSymbol: false,
+                        symbol: 'circle',
+                        symbolSize: 2
                     },
                     {
                         name: 'MA10',
@@ -758,9 +1263,11 @@
                         smooth: true,
                         lineStyle: {
                             width: 1.5,
-                            color: '#00BFFF'
+                            color: '#007bff'  // 蓝色 - 色盲友好
                         },
-                        showSymbol: false
+                        showSymbol: false,
+                        symbol: 'circle',
+                        symbolSize: 2
                     },
                     {
                         name: 'MA20',
@@ -769,26 +1276,42 @@
                         smooth: true,
                         lineStyle: {
                             width: 1.5,
-                            color: '#9370DB'
+                            color: '#28a745'  // 绿色 - 色盲友好
                         },
-                        showSymbol: false
+                        showSymbol: false,
+                        symbol: 'circle',
+                        symbolSize: 2
                     }
                 ]
             };
-            
+
             chartInstance.setOption(option);
-            
+
             // 监听dataZoom事件
             chartInstance.on('dataZoom', function(params) {
                 const option = chartInstance.getOption();
                 const start = option.dataZoom[0].start;
                 const end = option.dataZoom[0].end;
-                
+
                 const currentTotalBars = dates.length;
                 const visiblePercent = end - start;
                 savedVisibleBarCount = Math.round(currentTotalBars * (visiblePercent / 100));
-                
-                if (savedVisibleBarCount < 5) savedVisibleBarCount = 5;
+            });
+        }
+
+        // 复位图表缩放
+        function resetChartZoom(chartInstance, dates) {
+            chartInstance.setOption({
+                dataZoom: [{
+                    type: 'inside',
+                    start: dates.length > savedVisibleBarCount ? (100 - (savedVisibleBarCount / dates.length) * 100) : 0,
+                    end: 100
+                }, {
+                    type: 'slider',
+                    bottom: '5%',
+                    start: dates.length > savedVisibleBarCount ? (100 - (savedVisibleBarCount / dates.length) * 100) : 0,
+                    end: 100
+                }]
             });
         }
 
@@ -798,7 +1321,7 @@
                 instance.dispose();
             });
             chartInstances = [];
-            
+
             const chartPanel = document.getElementById('chartPanel');
             chartPanel.innerHTML = '';
         }
@@ -809,15 +1332,15 @@
             if (chartIndex !== -1) {
                 chartInstances[chartIndex].instance.dispose();
                 chartInstances.splice(chartIndex, 1);
-                
+
                 const chartContainer = document.getElementById(`chart-${code}`);
                 if (chartContainer) {
                     chartContainer.remove();
                 }
-                
+
                 if (chartInstances.length === 0) {
                     const chartPanel = document.getElementById('chartPanel');
-                    chartPanel.innerHTML = '';
+                    chartPanel.innerHTML = '<div class="empty-state">请选择股票查看K线图</div>';
                 }
             }
         }
@@ -868,7 +1391,7 @@
                         updateStatus.textContent = '数据更新已开始...';
                         updateStatus.className = 'update-status running';
                         updateButton.disabled = true;
-                        
+
                         const interval = setInterval(() => {
                             fetch('/api/update/status')
                                 .then(response => response.json())
@@ -876,7 +1399,7 @@
                                     if (!statusData.is_running) {
                                         clearInterval(interval);
                                         updateButton.disabled = false;
-                                        
+
                                         if (statusData.last_status === 'success') {
                                             updateStatus.textContent = `更新成功: ${statusData.last_end_time}`;
                                             updateStatus.className = 'update-status success';
@@ -904,7 +1427,7 @@
             compareModeToggle.addEventListener('change', function() {
                 isCompareMode = this.checked;
                 document.getElementById('chartPanel').classList.toggle('multi-mode', isCompareMode);
-                
+
                 if (!isCompareMode) {
                     if (currentStock) {
                         clearCharts();
@@ -926,22 +1449,25 @@
 
             // 初始加载日期列表
             loadDateList();
-            
+
             // 初始加载更新状态
             checkUpdateStatus();
-            
+
+            // 初始化移动端底部Tab
+            initMobileTabs();
+
             // 每1分钟自动检查一次更新状态
             setInterval(checkUpdateStatus, 60000);
         });
-        
+
         // 主题切换功能
         const themeToggle = document.getElementById('themeToggle');
         const root = document.documentElement;
 
         // 更新图表颜色函数
         function updateChartsColors() {
-            const isLightMode = root.classList.contains('light-mode');
-            
+            const isLightMode = !root.classList.contains('dark-mode');
+
             // 遍历所有图表实例并更新颜色
             chartInstances.forEach(({ instance }) => {
                 if (instance) {
@@ -951,18 +1477,23 @@
                                 color: isLightMode ? '#333333' : '#e0e0e0'
                             }
                         },
+                        legend: {
+                            textStyle: {
+                                color: isLightMode ? '#333333' : '#e0e0e0'
+                            }
+                        },
                         xAxis: {
                             axisLabel: {
-                                color: isLightMode ? '#666666' : '#888888'
+                                color: isLightMode ? '#666666' : '#b0b0b0'
                             }
                         },
                         yAxis: {
                             axisLabel: {
-                                color: isLightMode ? '#666666' : '#888888'
+                                color: isLightMode ? '#666666' : '#b0b0b0'
                             },
                             splitLine: {
                                 lineStyle: {
-                                    color: isLightMode ? '#dddddd' : '#444444'
+                                    color: isLightMode ? '#e9ecef' : '#444444'
                                 }
                             }
                         }
@@ -970,25 +1501,23 @@
                 }
             });
         }
-        
+
         // 检查本地存储中的主题偏好
         const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'light') {
-            root.classList.add('light-mode');
-            themeToggle.textContent = '切换暗色模式';
-            // 页面加载时更新图表颜色
-            updateChartsColors();
+        if (savedTheme === 'dark') {
+            root.classList.add('dark-mode');
+            themeToggle.textContent = '切换亮色模式';
         }
-        
+
         themeToggle.addEventListener('click', () => {
-            if (root.classList.contains('light-mode')) {
-                root.classList.remove('light-mode');
-                themeToggle.textContent = '切换亮色模式';
-                localStorage.setItem('theme', 'dark');
-            } else {
-                root.classList.add('light-mode');
+            if (root.classList.contains('dark-mode')) {
+                root.classList.remove('dark-mode');
                 themeToggle.textContent = '切换暗色模式';
                 localStorage.setItem('theme', 'light');
+            } else {
+                root.classList.add('dark-mode');
+                themeToggle.textContent = '切换亮色模式';
+                localStorage.setItem('theme', 'dark');
             }
             // 切换主题时更新图表颜色
             updateChartsColors();

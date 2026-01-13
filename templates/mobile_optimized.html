@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>创业板涨停数据 - 手机版</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.0/dist/echarts.min.js"></script>
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* 暗色模式 */
+        :root {
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --bg-color: #1a1a1a;
+            --card-bg: #2a2a2a;
+            --text-color: #ffffff;
+            --accent-color: #667eea;
+            --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --border-color: #444;
+            --header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        /* 亮色模式 */
+        :root.light-mode {
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --accent-color: #667eea;
+            --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --border-color: #e0e0e0;
+            --header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部导航栏 */
+        .top-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: var(--header-bg);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .top-nav h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* 日期选择器 */
+        .date-selector {
+            margin-top: 56px;
+            padding: 15px;
+            background-color: var(--card-bg);
+            border-bottom: 1px solid var(--border-color);
+            border-radius: 0 0 12px 12px;
+        }
+
+        .date-selector h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: var(--text-color);
+        }
+
+        .date-input {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--bg-color);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .date-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        /* 股票列表 */
+        .stock-list {
+            padding: 15px;
+            max-height: calc(100vh - 350px); /* 调整最大高度以适应更多设备 */
+            overflow-y: scroll; /* 使用scroll确保滚动条始终可见 */
+            -webkit-overflow-scrolling: touch; /* 启用平滑滚动（iOS） */
+            scroll-behavior: smooth; /* 平滑滚动效果 */
+            flex: 1; /* 允许弹性布局 */
+            position: relative; /* 确保定位正确 */
+        }
+
+        /* 自定义滚动条样式 */
+        .stock-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .stock-list::-webkit-scrollbar-track {
+            background: var(--card-bg);
+        }
+
+        .stock-list::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
+
+        .stock-list::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-color);
+        }
+
+        .list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .list-header h2 {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .stock-count {
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+
+        .stock-card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            border: 2px solid var(--border-color);
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .stock-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-color);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .stock-card.active {
+            border: 2px solid transparent;
+            background: linear-gradient(var(--card-bg), var(--card-bg)) padding-box,
+                        var(--accent-gradient) border-box;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .stock-name {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .stock-code {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .stock-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .stock-info span:first-child {
+            color: var(--text-color);
+            opacity: 0.8;
+        }
+
+        .pct-change {
+            font-weight: 500;
+        }
+
+        .pct-up {
+            color: #f5222d;
+        }
+
+        .pct-down {
+            color: #52c41a;
+        }
+
+        .pct-flat {
+            color: #999;
+        }
+
+        /* 搜索框 */
+        .search-container {
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 40px 12px 12px;
+            background-color: var(--bg-color);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+        }
+
+        /* 图表区域 */
+        .chart-panel {
+            padding: 15px;
+            background-color: var(--bg-color);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+            background-color: var(--header-bg);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .chart-header h2 {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 300px;
+            margin-bottom: 10px;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        /* 加载状态 */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+            color: var(--text-color);
+            opacity: 0.7;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            color: var(--text-color);
+            opacity: 0.7;
+            font-size: 14px;
+        }
+
+        /* 底部信息 */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-color);
+            font-size: 12px;
+            background-color: var(--header-bg);
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* 主题切换按钮 */
+        .theme-toggle-btn {
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .theme-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* 分页控制 */
+        .pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+            padding: 10px;
+        }
+
+        .pagination-btn {
+            padding: 8px 15px;
+            background: var(--accent-gradient);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .pagination-info {
+            color: var(--text-color);
+            font-size: 14px;
+        }
+
+        /* 筛选器 */
+        .filter-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 8px 12px;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .filter-btn.active {
+            background: var(--accent-gradient);
+            color: white;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-nav">
+        <h1>创业板涨停数据</h1>
+        <div style="display: flex; gap: 10px;">
+            <button class="nav-btn" onclick="switchToDesktop()">电脑版</button>
+            <button class="theme-toggle-btn" id="themeToggle">切换亮色模式</button>
+        </div>
+    </div>
+
+    <!-- 日期选择器 -->
+    <div class="date-selector">
+        <h3>选择日期</h3>
+        <input type="date" id="datePicker" class="date-input">
+    </div>
+
+    <!-- 搜索和筛选 -->
+    <div class="search-container">
+        <input type="text" id="searchInput" class="search-input" placeholder="搜索股票代码或名称...">
+        <span class="search-icon">🔍</span>
+    </div>
+
+    <div class="filter-container">
+        <button class="filter-btn active" data-filter="all">全部</button>
+        <button class="filter-btn" data-filter="positive">上涨</button>
+        <button class="filter-btn" data-filter="negative">下跌</button>
+        <button class="filter-btn" data-filter="flat">平盘</button>
+    </div>
+
+    <!-- 股票列表 -->
+    <div class="stock-list">
+        <div class="list-header">
+            <h2>涨停股票列表</h2>
+            <span class="stock-count">共 <span id="stockCount">0</span> 只</span>
+        </div>
+        <div id="stockList" class="loading">加载中...</div>
+        
+        <!-- 分页控制 -->
+        <div class="pagination-controls">
+            <button class="pagination-btn" id="prevPage" disabled>上一页</button>
+            <span class="pagination-info" id="paginationInfo">1/1</span>
+            <button class="pagination-btn" id="nextPage" disabled>下一页</button>
+        </div>
+    </div>
+
+    <!-- 图表区域 -->
+    <div class="chart-panel">
+        <div class="chart-header">
+            <h2 id="chartTitle">股票K线图</h2>
+        </div>
+        <div id="chartContainer" class="chart-container"></div>
+    </div>
+
+    <!-- 底部信息 -->
+    <div class="footer">
+        <p>创业板涨停数据分析</p>
+    </div>
+
+
+    <script>
+        // 全局变量
+        let currentDate = '';
+        let currentStock = '';
+        let chartInstance = null;
+        let currentDataZoom = {start: 50, end: 100}; // 保存当前的dataZoom设置
+        let allStocks = []; // 存储所有股票数据
+        let filteredStocks = []; // 存储筛选后的股票数据
+        let currentPage = 1; // 当前页码
+        let stocksPerPage = 10; // 每页显示的股票数量
+        let currentFilter = 'all'; // 当前筛选条件
+        let currentSearch = ''; // 当前搜索条件
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 主题切换功能
+            const themeToggle = document.getElementById('themeToggle');
+            const root = document.documentElement;
+
+            // 检查本地存储中的主题偏好
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'light') {
+                root.classList.add('light-mode');
+                themeToggle.textContent = '切换暗色模式';
+            }
+
+            themeToggle.addEventListener('click', () => {
+                if (root.classList.contains('light-mode')) {
+                    root.classList.remove('light-mode');
+                    themeToggle.textContent = '切换亮色模式';
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    root.classList.add('light-mode');
+                    themeToggle.textContent = '切换暗色模式';
+                    localStorage.setItem('theme', 'light');
+                }
+            });
+
+            initApp();
+        });
+
+        // 初始化应用
+        async function initApp() {
+            await fetchDates();
+            await fetchStocks(currentDate);
+            
+            // 添加搜索功能
+            document.getElementById('searchInput').addEventListener('input', handleSearch);
+            
+            // 添加筛选功能
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentFilter = this.dataset.filter;
+                    applyFilters();
+                });
+            });
+            
+            // 添加分页功能
+            document.getElementById('prevPage').addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderStockList();
+                }
+            });
+            
+            document.getElementById('nextPage').addEventListener('click', () => {
+                if (currentPage < Math.ceil(filteredStocks.length / stocksPerPage)) {
+                    currentPage++;
+                    renderStockList();
+                }
+            });
+        }
+
+        // 获取可用日期
+        async function fetchDates() {
+            try {
+                const response = await fetch('/api/dates');
+                const dates = await response.json();
+
+                if (dates.length > 0) {
+                    currentDate = dates[0];
+                    const datePicker = document.getElementById('datePicker');
+                    datePicker.value = currentDate;
+
+                    // 添加日期选择事件监听
+                    datePicker.addEventListener('change', function() {
+                        currentDate = this.value;
+                        fetchStocks(currentDate);
+                    });
+                }
+            } catch (e) {
+                console.error('Error fetching dates:', e);
+            }
+        }
+
+        // 获取股票数据
+        async function fetchStocks(date) {
+            const list = document.getElementById('stockList');
+            list.innerHTML = '<div class="loading">加载中...</div>';
+
+            try {
+                const response = await fetch(`/api/stocks/${date}`);
+                let stocks = await response.json();
+
+                document.getElementById('stockCount').textContent = stocks.length;
+                
+                // 保存所有股票数据
+                allStocks = stocks;
+                
+                // 应用筛选和搜索
+                applyFilters();
+            } catch (e) {
+                console.error('Error fetching stocks:', e);
+                list.innerHTML = '<div class="empty-state">加载失败</div>';
+            }
+        }
+
+        // 应用筛选和搜索
+        function applyFilters() {
+            // 先按筛选条件过滤
+            let tempFiltered = allStocks;
+            
+            if (currentFilter === 'positive') {
+                tempFiltered = allStocks.filter(stock => stock.t1_open_pct > 0);
+            } else if (currentFilter === 'negative') {
+                tempFiltered = allStocks.filter(stock => stock.t1_open_pct < 0);
+            } else if (currentFilter === 'flat') {
+                tempFiltered = allStocks.filter(stock => stock.t1_open_pct === 0 || stock.t1_open_pct === null);
+            }
+            
+            // 再按搜索条件过滤
+            if (currentSearch) {
+                const searchLower = currentSearch.toLowerCase();
+                tempFiltered = tempFiltered.filter(stock => 
+                    stock.code.toLowerCase().includes(searchLower) || 
+                    stock.name.toLowerCase().includes(searchLower)
+                );
+            }
+            
+            // 更新筛选后的股票列表
+            filteredStocks = tempFiltered;
+            
+            // 重置到第一页
+            currentPage = 1;
+            
+            // 渲染股票列表
+            renderStockList();
+        }
+
+        // 处理搜索
+        function handleSearch() {
+            currentSearch = document.getElementById('searchInput').value.trim();
+            applyFilters();
+        }
+
+        // 渲染股票列表
+        function renderStockList() {
+            const list = document.getElementById('stockList');
+            list.innerHTML = '';
+
+            if (filteredStocks.length === 0) {
+                list.innerHTML = '<div class="empty-state">无符合条件的股票</div>';
+                updatePagination();
+                return;
+            }
+
+            // 计算当前页的数据
+            const startIndex = (currentPage - 1) * stocksPerPage;
+            const endIndex = Math.min(startIndex + stocksPerPage, filteredStocks.length);
+            const currentStocks = filteredStocks.slice(startIndex, endIndex);
+
+            currentStocks.forEach(stock => {
+                const card = document.createElement('div');
+                card.className = 'stock-card';
+                card.dataset.code = stock.code;
+
+                let pctClass = 'pct-flat';
+                let pctText = '--';
+                if (stock.t1_open_pct !== null) {
+                    pctText = (stock.t1_open_pct > 0 ? '+' : '') + stock.t1_open_pct + '%';
+                    if (stock.t1_open_pct > 0) pctClass = 'pct-up';
+                    else if (stock.t1_open_pct < 0) pctClass = 'pct-down';
+                }
+
+                // 计算盈亏比例
+                let profitPct = 0;
+                if (stock.t1_open_price && stock.t2_close_price) {
+                    profitPct = ((stock.t2_close_price - stock.t1_open_price) / stock.t1_open_price) * 100;
+                }
+                let profitPctText = profitPct.toFixed(2) + '%';
+                let profitClass = 'pct-flat';
+                if (profitPct > 0) profitClass = 'pct-up';
+                else if (profitPct < 0) profitClass = 'pct-down';
+
+                card.innerHTML = `
+                    <div class="stock-header">
+                        <span class="stock-name">${stock.name}</span>
+                        <span class="stock-code">${stock.code}</span>
+                    </div>
+                    <div class="stock-info">
+                        <span>次日开盘:</span>
+                        <span class="pct-change ${pctClass}">${pctText}</span>
+                    </div>
+                    <div class="stock-info">
+                        <span>盈亏比例:</span>
+                        <span class="pct-change ${profitClass}">${profitPctText}</span>
+                    </div>
+                `;
+
+                card.onclick = () => selectStock(stock.code, stock.name, card);
+                list.appendChild(card);
+            });
+
+            // 更新分页信息
+            updatePagination();
+
+            // 默认选择第一只股票
+            if (currentStocks.length > 0 && !currentStock) {
+                selectStock(currentStocks[0].code, currentStocks[0].name, null);
+            }
+        }
+
+        // 更新分页信息
+        function updatePagination() {
+            const totalPages = Math.ceil(filteredStocks.length / stocksPerPage);
+            const paginationInfo = document.getElementById('paginationInfo');
+            paginationInfo.textContent = `${currentPage}/${totalPages || 1}`;
+
+            // 更新按钮状态
+            document.getElementById('prevPage').disabled = currentPage <= 1;
+            document.getElementById('nextPage').disabled = currentPage >= totalPages || totalPages === 0;
+        }
+
+        // 选择股票
+        async function selectStock(code, name, element) {
+            currentStock = code;
+
+            // 更新UI
+            document.querySelectorAll('.stock-card').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            // 更新图表标题
+            document.getElementById('chartTitle').textContent = `${name} (${code}) K线图`;
+
+            // 渲染图表
+            await renderChart(currentDate, code, name);
+        }
+
+        // 渲染图表
+        async function renderChart(date, code, name) {
+            if (chartInstance) {
+                chartInstance.dispose();
+            }
+
+            chartInstance = echarts.init(document.getElementById('chartContainer'));
+
+            try {
+                const response = await fetch(`/api/kline/${date}/${code}`);
+                const klineData = await response.json();
+
+                if (klineData.error) {
+                    throw new Error(klineData.error);
+                }
+
+                // 转换数据格式
+                const candlestickData = [];
+                const dateLabels = [];
+                const volumeData = [];
+
+                klineData.forEach(item => {
+                    if (item.date && item.open && item.close && item.low && item.high && item.vol) {
+                        candlestickData.push([item.open, item.close, item.low, item.high]);
+                        dateLabels.push(item.date);
+                        volumeData.push(item.vol);
+                    }
+                });
+
+                // 设置图表选项
+                const option = {
+                    tooltip: {
+                        trigger: 'axis',
+                        axisPointer: {
+                            type: 'cross'
+                        }
+                    },
+                    grid: [
+                        {
+                            left: '10%',
+                            right: '10%',
+                            height: '60%'
+                        },
+                        {
+                            left: '10%',
+                            right: '10%',
+                            top: '75%',
+                            height: '15%'
+                        }
+                    ],
+                    xAxis: [
+                        {
+                            type: 'category',
+                            data: dateLabels,
+                            scale: true,
+                            boundaryGap: false,
+                            axisLine: {onZero: false},
+                            splitLine: {show: false},
+                            axisLabel: {show: false},
+                            splitArea: {show: false}
+                        },
+                        {
+                            type: 'category',
+                            gridIndex: 1,
+                            data: dateLabels,
+                            scale: true,
+                            boundaryGap: false,
+                            axisLine: {onZero: false},
+                            axisTick: {show: false},
+                            splitLine: {show: false},
+                            axisLabel: {show: false},
+                            splitArea: {show: false}
+                        }
+                    ],
+                    yAxis: [
+                        {
+                            scale: true,
+                            splitArea: {show: false},
+                            splitLine: {show: false},
+                            axisLabel: {
+                                color: document.documentElement.classList.contains('light-mode') ? '#333333' : '#ffffff'
+                            }
+                        },
+                        {
+                            scale: true,
+                            gridIndex: 1,
+                            splitNumber: 2,
+                            axisLabel: {show: false},
+                            axisLine: {show: false},
+                            axisTick: {show: false},
+                            splitLine: {show: false}
+                        }
+                    ],
+                    dataZoom: [
+                        {
+                            type: 'inside',
+                            xAxisIndex: [0, 1],
+                            start: currentDataZoom.start,
+                            end: currentDataZoom.end
+                        },
+                        {
+                            show: true,
+                            xAxisIndex: [0, 1],
+                            type: 'slider',
+                            bottom: '5%',
+                            start: currentDataZoom.start,
+                            end: currentDataZoom.end
+                        }
+                    ],
+                    series: [
+                        {
+                            name: 'K线',
+                            type: 'candlestick',
+                            data: candlestickData,
+                            itemStyle: {
+                                color: '#f5222d',
+                                color0: '#52c41a',
+                                borderColor: '#f5222d',
+                                borderColor0: '#52c41a'
+                            }
+                        },
+                        {
+                            name: '成交量',
+                            type: 'bar',
+                            xAxisIndex: 1,
+                            yAxisIndex: 1,
+                            data: volumeData,
+                            itemStyle: {
+                                color: function(params) {
+                                    const dataIndex = params.dataIndex;
+                                    const currentCandle = candlestickData[dataIndex];
+                                    if (!currentCandle) return '#444';
+                                    return currentCandle[1] > currentCandle[0] ? '#f5222d' : '#52c41a';
+                                }
+                            }
+                        }
+                    ]
+                };
+
+                chartInstance.setOption(option);
+
+                // 添加dataZoom事件监听器，保存当前设置
+                chartInstance.on('dataZoom', function(params) {
+                    if (params.batch) {
+                        // 批量更新时使用最后一个参数的设置
+                        const lastParam = params.batch[params.batch.length - 1];
+                        currentDataZoom.start = lastParam.start;
+                        currentDataZoom.end = lastParam.end;
+                    } else {
+                        currentDataZoom.start = params.start;
+                        currentDataZoom.end = params.end;
+                    }
+                });
+            } catch (e) {
+                console.error('Error rendering chart:', e);
+                chartInstance.setOption({
+                    title: {
+                        text: '暂无K线数据',
+                        left: 'center',
+                        top: 'center',
+                        textStyle: {
+                            color: '#999',
+                            fontSize: 14
+                        }
+                    }
+                });
+            }
+        }
+
+        // 窗口大小变化时重新调整图表
+        window.addEventListener('resize', function() {
+            if (chartInstance) {
+                chartInstance.resize();
+            }
+        });
+
+        // 切换到电脑版
+        function switchToDesktop() {
+            window.location.href = '/';
+        }
+
+        // 主题切换功能
+        const themeToggle = document.getElementById('themeToggle');
+        const root = document.documentElement;
+
+        // 更新图表颜色函数
+        function updateChartColors() {
+            const isLightMode = root.classList.contains('light-mode');
+            const textColor = isLightMode ? '#333333' : '#ffffff';
+
+            // 更新图表的Y轴标签颜色
+            if (chartInstance) {
+                chartInstance.setOption({
+                    yAxis: {
+                        axisLabel: {
+                            color: textColor
+                        }
+                    }
+                });
+            }
+        }
+
+        // 检查本地存储中的主题偏好
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            root.classList.add('light-mode');
+            themeToggle.textContent = '切换暗色模式';
+        }
+
+        themeToggle.addEventListener('click', () => {
+            if (root.classList.contains('light-mode')) {
+                root.classList.remove('light-mode');
+                themeToggle.textContent = '切换亮色模式';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                root.classList.add('light-mode');
+                themeToggle.textContent = '切换暗色模式';
+                localStorage.setItem('theme', 'light');
+            }
+            // 更新图表颜色
+            updateChartColors();
+        });
+
+        // 页面加载时更新图表颜色
+        window.addEventListener('load', updateChartColors);
+    </script>
+</body>
+</html>

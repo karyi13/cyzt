@@ -42,9 +42,17 @@ update_status = {
 def index():
     return render_template('index.html')
 
+@app.route('/index_new.html')
+def index_new():
+    return render_template('index_new.html')
+
 @app.route('/mobile')
 def mobile():
     return render_template('mobile.html')
+
+@app.route('/mobile_optimized')
+def mobile_optimized():
+    return render_template('mobile_optimized.html')
 
 @app.route('/stock_analysis_enhanced_v2.html')
 def stock_analysis_enhanced():
